@@ -1,0 +1,120 @@
+# ==============================================================================
+# TriMaint — stack unique pour DockPanel
+# ------------------------------------------------------------------------------
+# Différences avec le docker-compose.yml du repo (conçu pour Coolify/Traefik) :
+#
+#   1. PAS de section "build:" — les images sont construites une fois en SSH
+#      par prepare-trimaint.sh, puis référencées par tag. DockPanel peut ainsi
+#      déployer ce YAML tel quel, sans avoir besoin d'accéder aux sources.
+#
+#   2. Le frontend publie son port sur 127.0.0.1:7001 au lieu de "expose".
+#      Coolify branchait Traefik sur le réseau Docker ; DockPanel utilise nginx
+#      sur l'hôte, qui a besoin d'un port réellement publié pour proxifier.
+#      L'écoute est limitée à 127.0.0.1 : rien n'est exposé publiquement,
+#      c'est le reverse proxy DockPanel qui gère l'accès et le TLS.
+#
+#   3. Le backend reste volontairement NON publié. Il n'est joignable que par
+#      le frontend via le réseau interne (proxy_pass http://backend:8000 dans
+#      frontend/nginx.conf). C'est le bon design : un seul point d'entrée.
+#
+#   4. Volumes nommés explicitement (name:) pour que leur nom ne dépende pas
+#      du nom de projet choisi par DockPanel, et reste stable entre redéploiements.
+# ==============================================================================
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: trimaint_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - trimaint_postgres_data:/var/lib/postgresql/data
+    networks:
+      - trimaint_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    image: trimaint-backend:prod
+    container_name: trimaint_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SECRET_KEY: ${SECRET_KEY}
+      UPLOAD_DIR: /data/uploads
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5/minute}
+      # Bootstrap admin : mettre à 0 après le premier démarrage réussi,
+      # le compte existe déjà dans la base restaurée.
+      BOOTSTRAP_ADMIN: ${BOOTSTRAP_ADMIN:-0}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      # Sauvegarde automatique quotidienne de la base
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-1}
+      BACKUP_HOUR: ${BACKUP_HOUR:-02}
+      BACKUP_MINUTE: ${BACKUP_MINUTE:-00}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_DIR: /data/backups
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - trimaint_uploads_data:/data/uploads
+      - trimaint_backups_data:/data/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - trimaint_net
+    expose:
+      - "8000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    image: trimaint-frontend:prod
+    container_name: trimaint_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - trimaint_net
+    ports:
+      # Écoute locale uniquement — cible du reverse proxy DockPanel
+      - "127.0.0.1:7001:80"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  trimaint_postgres_data:
+    name: trimaint_postgres_data
+  trimaint_uploads_data:
+    name: trimaint_uploads_data
+  trimaint_backups_data:
+    name: trimaint_backups_data
+
+networks:
+  trimaint_net:
+    name: trimaint_net
+    driver: bridge
