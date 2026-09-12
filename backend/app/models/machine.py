@@ -24,7 +24,7 @@ class Machine(Base):
     couleur = Column(String(7), nullable=True)  # hex color e.g. #22c55e
     taille_pastille = Column(Float, nullable=True)  # raw em value (e.g. 0.9, 1.4)
     rotation = Column(Float, nullable=True)  # degrees 0-360 for label orientation
-    latitude = Column(Float, nullable=True)   # GPS lat for map view
+    latitude = Column(Float, nullable=True)  # GPS lat for map view
     longitude = Column(Float, nullable=True)  # GPS lng for map view
     heures_fonctionnement = Column(Float, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -32,5 +32,9 @@ class Machine(Base):
 
     pannes = relationship("Panne", back_populates="machine")
     interventions = relationship("Intervention", back_populates="machine")
-    convoyeurs_source = relationship("Convoyeur", foreign_keys="Convoyeur.source_machine_id", back_populates="source_machine")
-    convoyeurs_target = relationship("Convoyeur", foreign_keys="Convoyeur.target_machine_id", back_populates="target_machine")
+    convoyeurs_source = relationship(
+        "Convoyeur", foreign_keys="Convoyeur.source_machine_id", back_populates="source_machine"
+    )
+    convoyeurs_target = relationship(
+        "Convoyeur", foreign_keys="Convoyeur.target_machine_id", back_populates="target_machine"
+    )

@@ -6,16 +6,15 @@ J: Signature électronique sur BT.
 
 Ce module regroupe les nouveaux endpoints pour les fonctionnalités C à J.
 """
+
 import smtplib
 import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from pydantic import BaseModel
-from typing import Optional, List
 from app.db.database import get_db
 from app.models.piece import Piece
 from app.models.panne import Panne
@@ -37,6 +36,7 @@ router = APIRouter(prefix="/api/extra", tags=["extra"])
 # ═══════════════════════════════════════════════════════════════
 #  F — NOTIFICATIONS EMAIL
 # ═══════════════════════════════════════════════════════════════
+
 
 class EmailConfig(BaseModel):
     smtp_host: str = ""
@@ -81,10 +81,14 @@ def send_email(to_emails: list[str], subject: str, body: str):
 
 def notify_panne_critique_email(db: Session, panne: Panne, username: str):
     """Envoie un email à tous les managers/admins pour une panne critique."""
-    users = db.query(User).filter(
-        User.role.in_(("admin", "chef_equipe")),
-        User.is_active == True,
-    ).all()
+    users = (
+        db.query(User)
+        .filter(
+            User.role.in_(("admin", "chef_equipe")),
+            User.is_active,
+        )
+        .all()
+    )
     emails = [u.email for u in users if u.email]
     if not emails:
         return
@@ -97,7 +101,7 @@ def notify_panne_critique_email(db: Session, panne: Panne, username: str):
     <tr><td style="padding:4px 12px;font-weight:bold;">Titre:</td><td>{panne.titre}</td></tr>
     <tr><td style="padding:4px 12px;font-weight:bold;">Criticité:</td><td>{panne.criticite}/5</td></tr>
     <tr><td style="padding:4px 12px;font-weight:bold;">Signalée par:</td><td>{username}</td></tr>
-    <tr><td style="padding:4px 12px;font-weight:bold;">Date:</td><td>{datetime.now().strftime('%d/%m/%Y %H:%M')}</td></tr>
+    <tr><td style="padding:4px 12px;font-weight:bold;">Date:</td><td>{datetime.now().strftime('%d/%m/%Y %H:%M')}</td></tr>  # noqa: E501
     </table>
     <p style="margin-top:16px;"><a href="{os.getenv('APP_URL', '')}/pannes/{panne.id}"
        style="background:#f97316;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;">
@@ -117,6 +121,7 @@ def email_status(_=Depends(get_current_user)):
 #  I — ALERTES STOCK
 # ═══════════════════════════════════════════════════════════════
 
+
 @router.get("/stock/alertes")
 def stock_alertes(
     db: Session = Depends(get_db),
@@ -128,21 +133,24 @@ def stock_alertes(
     for p in pieces:
         seuil = p.seuil_alerte or 0
         if p.stock <= seuil:
-            alertes.append({
-                "id": p.id,
-                "nom": p.nom,
-                "reference": p.reference,
-                "stock": p.stock,
-                "seuil_alerte": seuil,
-                "rupture": p.stock == 0,
-                "pourcentage": round(p.stock / max(seuil * 2, 1) * 100) if seuil > 0 else 100,
-            })
+            alertes.append(
+                {
+                    "id": p.id,
+                    "nom": p.nom,
+                    "reference": p.reference,
+                    "stock": p.stock,
+                    "seuil_alerte": seuil,
+                    "rupture": p.stock == 0,
+                    "pourcentage": round(p.stock / max(seuil * 2, 1) * 100) if seuil > 0 else 100,
+                }
+            )
     return {"alertes": alertes, "total": len(alertes)}
 
 
 # ═══════════════════════════════════════════════════════════════
 #  D — EXPORT EXCEL NATIF (.xlsx)
 # ═══════════════════════════════════════════════════════════════
+
 
 @router.get("/export/xlsx/{entity}")
 def export_xlsx(
@@ -164,32 +172,81 @@ def export_xlsx(
     header_font = Font(bold=True, color="FFFFFF", size=11)
     header_fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
     thin_border = Border(
-        left=Side(style="thin"), right=Side(style="thin"),
-        top=Side(style="thin"), bottom=Side(style="thin")
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
     )
 
     if entity == "machines":
-        ws.append(["ID", "Nom", "Code Interne", "Site", "Ligne", "Zone", "Étage", "Fabricant", "Modèle", "Statut"])
-        machines = db.query(Piece).all() if False else db.query(__import__("app.models.machine", fromlist=["Machine"]).Machine).all()
+        ws.append(
+            [
+                "ID",
+                "Nom",
+                "Code Interne",
+                "Site",
+                "Ligne",
+                "Zone",
+                "Étage",
+                "Fabricant",
+                "Modèle",
+                "Statut",
+            ]
+        )
+        machines = (
+            db.query(Piece).all()
+            if False
+            else db.query(__import__("app.models.machine", fromlist=["Machine"]).Machine).all()
+        )
         for m in machines:
-            ws.append([m.id, m.nom, m.code_interne or "", m.site or "", m.ligne or "",
-                       m.zone or "", m.etage or 0, m.fabricant or "", m.modele or "", m.statut or ""])
+            ws.append(
+                [
+                    m.id,
+                    m.nom,
+                    m.code_interne or "",
+                    m.site or "",
+                    m.ligne or "",
+                    m.zone or "",
+                    m.etage or 0,
+                    m.fabricant or "",
+                    m.modele or "",
+                    m.statut or "",
+                ]
+            )
 
     elif entity == "pannes":
-        ws.append(["ID", "Titre", "Machine ID", "Criticité", "Cause réelle", "Solution", "Date création"])
+        ws.append(
+            ["ID", "Titre", "Machine ID", "Criticité", "Cause réelle", "Solution", "Date création"]
+        )
         pannes = db.query(Panne).order_by(Panne.created_at.desc()).all()
         for p in pannes:
-            ws.append([p.id, p.titre, p.machine_id, p.criticite or 3,
-                       p.cause_reelle or "", p.solution or "",
-                       p.created_at.strftime("%d/%m/%Y") if p.created_at else ""])
+            ws.append(
+                [
+                    p.id,
+                    p.titre,
+                    p.machine_id,
+                    p.criticite or 3,
+                    p.cause_reelle or "",
+                    p.solution or "",
+                    p.created_at.strftime("%d/%m/%Y") if p.created_at else "",
+                ]
+            )
 
     elif entity == "pieces":
         ws.append(["ID", "Nom", "Référence", "Stock", "Seuil alerte", "Prix unitaire", "Catégorie"])
         pieces = db.query(Piece).all()
         for p in pieces:
-            ws.append([p.id, p.nom or "", p.reference or "", p.stock or 0,
-                       getattr(p, "seuil_alerte", None) or "", getattr(p, "prix_unitaire", None) or "",
-                       getattr(p, "categorie", None) or ""])
+            ws.append(
+                [
+                    p.id,
+                    p.nom or "",
+                    p.reference or "",
+                    p.stock or 0,
+                    getattr(p, "seuil_alerte", None) or "",
+                    getattr(p, "prix_unitaire", None) or "",
+                    getattr(p, "categorie", None) or "",
+                ]
+            )
 
     else:
         raise HTTPException(status_code=400, detail=f"Entité non supportée: {entity}")
@@ -229,6 +286,7 @@ def export_xlsx(
 #  E — CHAT/MESSAGERIE INTERNE SUR PANNES
 # ═══════════════════════════════════════════════════════════════
 
+
 class ChatMessage(BaseModel):
     message: str
 
@@ -247,11 +305,12 @@ def get_chat(
     # Les messages sont stockés dans causes_possibles (JSON array) — hack simple
     # Pour une vraie implémentation, créer une table chat_messages
     import json
+
     messages = []
     if panne.description and panne.description.startswith("[CHAT]"):
         try:
             messages = json.loads(panne.description[6:])
-        except:
+        except (json.JSONDecodeError, ValueError):
             messages = []
     return {"messages": messages}
 
@@ -265,6 +324,7 @@ def post_chat(
 ):
     """Ajoute un message de chat sur une panne."""
     import json
+
     panne = db.query(Panne).filter(Panne.id == panne_id).first()
     if not panne:
         raise HTTPException(status_code=404, detail="Panne introuvable")
@@ -274,7 +334,7 @@ def post_chat(
     if panne.description and panne.description.startswith("[CHAT]"):
         try:
             messages = json.loads(panne.description[6:])
-        except:
+        except (json.JSONDecodeError, ValueError):
             messages = []
 
     # Ajouter le nouveau message
@@ -296,6 +356,7 @@ def post_chat(
 # ═══════════════════════════════════════════════════════════════
 #  J — SIGNATURE ÉLECTRONIQUE SUR BT
 # ═══════════════════════════════════════════════════════════════
+
 
 class SignatureBody(BaseModel):
     signature_data: str  # base64 PNG data URL
@@ -341,15 +402,18 @@ def get_signatures(
         raise HTTPException(status_code=404, detail="BT introuvable")
 
     import re
+
     signatures = []
     if bt.compte_rendu:
         # Pattern: [SIG:role:username:timestamp]data_url[/SIG]
-        pattern = r'\[SIG:(\w+):(\w+):([^\]]+)\](.*?)\[/SIG\]'
+        pattern = r"\[SIG:(\w+):(\w+):([^\]]+)\](.*?)\[/SIG\]"
         for match in re.finditer(pattern, bt.compte_rendu):
-            signatures.append({
-                "role": match.group(1),
-                "username": match.group(2),
-                "timestamp": match.group(3),
-                "data": match.group(4),
-            })
+            signatures.append(
+                {
+                    "role": match.group(1),
+                    "username": match.group(2),
+                    "timestamp": match.group(3),
+                    "data": match.group(4),
+                }
+            )
     return {"signatures": signatures}

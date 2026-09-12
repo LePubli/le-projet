@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/checklists", tags=["checklists"])
 
 # ─── Schémas Pydantic ──────────────────────────────────────────────────────
 
+
 class ChecklistCreate(BaseModel):
     titre: str
     description: Optional[str] = None
@@ -45,6 +46,7 @@ class ChecklistOut(BaseModel):
 
 
 # ─── Routes ────────────────────────────────────────────────────────────────
+
 
 @router.get("/", response_model=list[ChecklistOut])
 def list_checklists(

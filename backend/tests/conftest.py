@@ -1,4 +1,5 @@
 """Configuration pytest pour les tests backend TriMaint."""
+
 import os
 import sys
 from pathlib import Path
@@ -10,16 +11,16 @@ os.environ["TEST_MODE"] = "1"
 BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from app.db.database import Base, get_db
-from app.main import app
-from app.models.user import User
-from app.core.security import get_password_hash
+from app.db.database import Base, get_db  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.core.security import get_password_hash  # noqa: E402
 
 
 # Base SQLite en mémoire pour les tests
@@ -47,6 +48,7 @@ def db_session():
 @pytest.fixture(scope="function")
 def client(db_session):
     """Client de test FastAPI avec DB override."""
+
     def override_get_db():
         try:
             yield db_session

@@ -6,6 +6,7 @@ Sinon, fallback sur `ILIKE` classique.
 
 Entités recherchées : machines, pannes, interventions, bons-travail, base de connaissances.
 """
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, text, func
@@ -51,9 +52,18 @@ def _fuzzy_filter(column, q: str):
 
 
 @router.get("/")
-def search(q: str = Query(..., min_length=1), db: Session = Depends(get_db), _=Depends(get_current_user)):
+def search(
+    q: str = Query(..., min_length=1), db: Session = Depends(get_db), _=Depends(get_current_user)
+):
     """Recherche globale fuzzy. Retourne des résultats groupés par type d'entité."""
-    results = {"machines": [], "pannes": [], "interventions": [], "bons_travail": [], "base_connaissances": [], "lignes": []}
+    results = {
+        "machines": [],
+        "pannes": [],
+        "interventions": [],
+        "bons_travail": [],
+        "base_connaissances": [],
+        "lignes": [],
+    }
     term = f"%{q}%"
 
     # ─── Machines ─────────────────────────────────────────────
@@ -76,8 +86,13 @@ def search(q: str = Query(..., min_length=1), db: Session = Depends(get_db), _=D
     machines = machines_q.limit(15).all()
     results["machines"] = [
         {
-            "id": m.id, "nom": m.nom, "code_interne": m.code_interne,
-            "statut": m.statut, "ligne": m.ligne, "zone": m.zone, "type": "machine",
+            "id": m.id,
+            "nom": m.nom,
+            "code_interne": m.code_interne,
+            "statut": m.statut,
+            "ligne": m.ligne,
+            "zone": m.zone,
+            "type": "machine",
         }
         for m in machines
     ]
@@ -106,20 +121,28 @@ def search(q: str = Query(..., min_length=1), db: Session = Depends(get_db), _=D
             machine_cache[p.machine_id] = m.nom if m else f"#{p.machine_id}"
     results["pannes"] = [
         {
-            "id": p.id, "titre": p.titre, "criticite": p.criticite,
-            "machine_id": p.machine_id, "machine_nom": machine_cache.get(p.machine_id, ""),
+            "id": p.id,
+            "titre": p.titre,
+            "criticite": p.criticite,
+            "machine_id": p.machine_id,
+            "machine_nom": machine_cache.get(p.machine_id, ""),
             "type": "panne",
         }
         for p in pannes
     ]
 
     # ─── Interventions ────────────────────────────────────────
-    interventions = db.query(Intervention).filter(
-        or_(
-            _fuzzy_filter(Intervention.technicien, q),
-            _fuzzy_filter(Intervention.commentaire, q),
+    interventions = (
+        db.query(Intervention)
+        .filter(
+            or_(
+                _fuzzy_filter(Intervention.technicien, q),
+                _fuzzy_filter(Intervention.commentaire, q),
+            )
         )
-    ).limit(10).all()
+        .limit(10)
+        .all()
+    )
     results["interventions"] = [
         {"id": i.id, "technicien": i.technicien, "machine_id": i.machine_id, "type": "intervention"}
         for i in interventions
@@ -138,8 +161,12 @@ def search(q: str = Query(..., min_length=1), db: Session = Depends(get_db), _=D
     bts = bts_q.limit(10).all()
     results["bons_travail"] = [
         {
-            "id": bt.id, "numero": bt.numero, "titre": bt.titre, "type_bt": bt.type_bt,
-            "statut": bt.statut, "type": "bon_travail",
+            "id": bt.id,
+            "numero": bt.numero,
+            "titre": bt.titre,
+            "type_bt": bt.type_bt,
+            "statut": bt.statut,
+            "type": "bon_travail",
         }
         for bt in bts
     ]
@@ -159,9 +186,14 @@ def search(q: str = Query(..., min_length=1), db: Session = Depends(get_db), _=D
     base = base_q.limit(10).all()
     results["base_connaissances"] = [
         {
-            "id": p.id, "titre": p.titre, "cause_reelle": p.cause_reelle,
-            "solution": p.solution[:120] + "..." if p.solution and len(p.solution) > 120 else p.solution,
-            "criticite": p.criticite, "type": "base",
+            "id": p.id,
+            "titre": p.titre,
+            "cause_reelle": p.cause_reelle,
+            "solution": (
+                p.solution[:120] + "..." if p.solution and len(p.solution) > 120 else p.solution
+            ),
+            "criticite": p.criticite,
+            "type": "base",
         }
         for p in base
     ]

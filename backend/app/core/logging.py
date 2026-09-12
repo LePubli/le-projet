@@ -9,6 +9,7 @@ Usage:
   log = get_logger(__name__)
   log.info("panne_created", panne_id=42, machine="L315", user="admin")
 """
+
 import logging
 import sys
 import os

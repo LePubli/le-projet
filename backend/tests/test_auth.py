@@ -1,4 +1,5 @@
 """Tests du module authentification."""
+
 from tests.conftest import auth_headers
 
 

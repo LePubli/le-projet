@@ -14,12 +14,13 @@ Entités supportées:
   - entretien  (BT type=entretien)
   - nettoyage  (BT type=nettoyage)
 """
+
 import csv
 import io
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -44,7 +45,12 @@ ENTITY_DEFS: Dict[str, Dict[str, Any]] = {
         "model": Machine,
         "columns": [
             ("nom", "nom", True, "Nom de la machine (obligatoire)"),
-            ("code_interne", "code_interne", False, "Code interne unique (ex: L315). Laisser vide pour auto-générer."),
+            (
+                "code_interne",
+                "code_interne",
+                False,
+                "Code interne unique (ex: L315). Laisser vide pour auto-générer.",
+            ),
             ("site", "site", False, "Site géographique"),
             ("ligne", "ligne", False, "Ligne de production (ex: Ligne 1)"),
             ("zone", "zone", False, "Zone (ex: Triage, Compactage)"),
@@ -69,8 +75,18 @@ ENTITY_DEFS: Dict[str, Dict[str, Any]] = {
             ("criticite", "criticite", False, "Criticité 1-5 (défaut 3)"),
             ("cause_reelle", "cause_reelle", False, "Cause identifiée"),
             ("solution", "solution", False, "Solution appliquée"),
-            ("causes_possibles", None, False, "Causes possibles séparées par | (ex: Usure|Surchauffe)"),
-            ("temps_moyen_reparation", "temps_moyen_reparation", False, "Temps moyen de réparation en minutes"),
+            (
+                "causes_possibles",
+                None,
+                False,
+                "Causes possibles séparées par | (ex: Usure|Surchauffe)",
+            ),
+            (
+                "temps_moyen_reparation",
+                "temps_moyen_reparation",
+                False,
+                "Temps moyen de réparation en minutes",
+            ),
         ],
         "unique_keys": [],
         "defaults": {"criticite": 3},
@@ -130,7 +146,12 @@ ENTITY_DEFS: Dict[str, Dict[str, Any]] = {
         "columns": [
             ("ligne", "ligne", True, "Nom de la ligne (obligatoire, ex: Ligne 1)"),
             ("site", "site", False, "Site"),
-            ("nb_machines", None, False, "Nombre de machines sur cette ligne (calculé à l'export, ignoré à l'import)"),
+            (
+                "nb_machines",
+                None,
+                False,
+                "Nombre de machines sur cette ligne (calculé à l'export, ignoré à l'import)",
+            ),
         ],
         "unique_keys": ["ligne"],
         "is_aggregate": True,
@@ -212,19 +233,79 @@ def _build_example_rows(entity: str, edef: Dict[str, Any]) -> List[List[str]]:
     """Génère 2 lignes d'exemple réalistes par entité."""
     if entity == "machines":
         return [
-            ["Convoyeur d'entrée", "L315", "Triselec", "Ligne 1", "Triage", "0", "Skandik", "C-200", "operationnel", "", "42.5", "18.3"],
-            ["Broyeur principal", "B540", "Triselec", "Ligne 1", "Compactage", "0", "Mehler", "B540", "operationnel", "Vérifier huile mensuel", "55.0", "22.0"],
+            [
+                "Convoyeur d'entrée",
+                "L315",
+                "Triselec",
+                "Ligne 1",
+                "Triage",
+                "0",
+                "Skandik",
+                "C-200",
+                "operationnel",
+                "",
+                "42.5",
+                "18.3",
+            ],
+            [
+                "Broyeur principal",
+                "B540",
+                "Triselec",
+                "Ligne 1",
+                "Compactage",
+                "0",
+                "Mehler",
+                "B540",
+                "operationnel",
+                "Vérifier huile mensuel",
+                "55.0",
+                "22.0",
+            ],
         ]
     if entity == "pannes":
         return [
-            ["Bruit anormal moteur", "L315", "Bruit métallique intermittent", "3", "Roulement usé", "Remplacement roulement", "Usure|Roulement|Manque lubrifiant", "45"],
-            ["Surchauffe capteur", "B540", "Capteur à 95°C", "4", "Ventilation bloquée", "Nettoyage ventilateur", "Poussière|Ventilation", "30"],
+            [
+                "Bruit anormal moteur",
+                "L315",
+                "Bruit métallique intermittent",
+                "3",
+                "Roulement usé",
+                "Remplacement roulement",
+                "Usure|Roulement|Manque lubrifiant",
+                "45",
+            ],
+            [
+                "Surchauffe capteur",
+                "B540",
+                "Capteur à 95°C",
+                "4",
+                "Ventilation bloquée",
+                "Nettoyage ventilateur",
+                "Poussière|Ventilation",
+                "30",
+            ],
         ]
     if entity in ("bons-travail", "entretien", "nettoyage"):
         type_bt = "entretien" if entity in ("bons-travail", "entretien") else "nettoyage"
         return [
-            [f"BT {type_bt} hebdomadaire", type_bt, "L315", "Vérifier niveaux d'huile", "normale", "Convoyeur", "à faire"],
-            [f"BT {type_bt} mensuel", type_bt, "B540", "Inspecter courroies", "basse", "Broyeur", "à faire"],
+            [
+                f"BT {type_bt} hebdomadaire",
+                type_bt,
+                "L315",
+                "Vérifier niveaux d'huile",
+                "normale",
+                "Convoyeur",
+                "à faire",
+            ],
+            [
+                f"BT {type_bt} mensuel",
+                type_bt,
+                "B540",
+                "Inspecter courroies",
+                "basse",
+                "Broyeur",
+                "à faire",
+            ],
         ]
     if entity == "lignes":
         return [
@@ -290,7 +371,11 @@ def _fetch_rows(entity: str, edef: Dict[str, Any], db: Session) -> List[List[str
             if model_col is None:
                 # Cas spécial: machine_code (FK résolue à l'envers)
                 if csv_col == "machine_code":
-                    mc = db.query(Machine).filter(Machine.id == obj.machine_id).first() if obj.machine_id else None
+                    mc = (
+                        db.query(Machine).filter(Machine.id == obj.machine_id).first()
+                        if obj.machine_id
+                        else None
+                    )
                     row.append(mc.code_interne if mc else "")
                 else:
                     row.append("")
@@ -364,6 +449,7 @@ async def import_entity(
 ):
     """Importe le CSV en base. Les lignes en erreur sont ignorées (pas de rollback global)."""
     from app.core.activity import log_activity
+
     edef = _get_entity_def(entity)
     content = await file.read()
     rows, parse_errors = _parse_csv(content, edef)
@@ -395,14 +481,20 @@ async def import_entity(
         raise HTTPException(status_code=500, detail=f"Erreur commit: {str(e)}")
 
     log_activity(
-        db, current_user, "importé", entity, None,
+        db,
+        current_user,
+        "importé",
+        entity,
+        None,
         f"{imported} ligne(s) importée(s), {skipped} ignorée(s)",
     )
     return ImportResult(imported=imported, skipped=skipped, errors=errors[:100])
 
 
 # ─── Parsing CSV ────────────────────────────────────────────────────────────
-def _parse_csv(content: bytes, edef: Dict[str, Any]) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]]]:
+def _parse_csv(
+    content: bytes, edef: Dict[str, Any]
+) -> Tuple[List[Dict[str, str]], List[Dict[str, Any]]]:
     """Parse le CSV. Ignore les lignes commençant par #. Retourne (rows, errors)."""
     text = content.decode("utf-8-sig")  # BOM-tolerant
     reader = csv.reader(io.StringIO(text), delimiter=";")
@@ -427,11 +519,13 @@ def _parse_csv(content: bytes, edef: Dict[str, Any]) -> Tuple[List[Dict[str, str
     # Vérifier que les en-têtes attendus sont présents
     for eh in expected_headers:
         if eh not in headers:
-            errors.append({"row": header_idx + 1, "column": eh, "message": f"Colonne '{eh}' manquante"})
+            errors.append(
+                {"row": header_idx + 1, "column": eh, "message": f"Colonne '{eh}' manquante"}
+            )
 
     # Mapper les lignes de données
     rows: List[Dict[str, str]] = []
-    for r in rows_raw[header_idx + 1:]:
+    for r in rows_raw[header_idx + 1 :]:
         if not r or (r[0] and r[0].startswith("#")):
             continue  # skip comments / empty lines
         if len(r) < len(headers):
@@ -442,7 +536,9 @@ def _parse_csv(content: bytes, edef: Dict[str, Any]) -> Tuple[List[Dict[str, str
     return rows, errors
 
 
-def _map_row(row: Dict[str, str], edef: Dict[str, Any], db: Session, dry_run: bool) -> Dict[str, Any]:
+def _map_row(
+    row: Dict[str, str], edef: Dict[str, Any], db: Session, dry_run: bool
+) -> Dict[str, Any]:
     """Convertit une ligne CSV en dict de valeurs Python pour le modèle."""
     mapped: Dict[str, Any] = {}
     model = edef["model"]
@@ -495,7 +591,9 @@ def _map_row(row: Dict[str, str], edef: Dict[str, Any], db: Session, dry_run: bo
 def _create_object(entity: str, edef: Dict[str, Any], mapped: Dict[str, Any], db: Session):
     """Crée l'instance du modèle SQLAlchemy à partir du dict mappé."""
     if entity == "lignes":
-        raise ValueError("L'import de lignes n'est pas supporté — modifiez le champ 'ligne' des machines à la place")
+        raise ValueError(
+            "L'import de lignes n'est pas supporté — modifiez le champ 'ligne' des machines à la place"
+        )
 
     model = edef["model"]
 

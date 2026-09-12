@@ -1,4 +1,5 @@
 """CRUD pour les filtres sauvegardés par utilisateur."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -70,10 +71,14 @@ def delete_filter(
     current_user=Depends(get_current_user),
 ):
     """Supprime un filtre sauvegardé (appartient à l'utilisateur courant)."""
-    sf = db.query(SavedFilter).filter(
-        SavedFilter.id == filter_id,
-        SavedFilter.user_id == current_user.id,
-    ).first()
+    sf = (
+        db.query(SavedFilter)
+        .filter(
+            SavedFilter.id == filter_id,
+            SavedFilter.user_id == current_user.id,
+        )
+        .first()
+    )
     if not sf:
         raise HTTPException(status_code=404, detail="Filtre introuvable")
     label = sf.name

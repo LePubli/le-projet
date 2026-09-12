@@ -1,4 +1,5 @@
 """Point d'entrée FastAPI de l'application TriMaint."""
+
 import os
 import shutil
 from contextlib import asynccontextmanager
@@ -8,10 +9,27 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from app.api import (
-    auth, machines, pannes, interventions, pieces,
-    search, stats, uploads, admin, notifications, maintenance_preventive,
-    convoyeurs, base_connaissances, kpi, checklists, bons_travail,
-    import_export, saved_filters, push, public_api, extra,
+    auth,
+    machines,
+    pannes,
+    interventions,
+    pieces,
+    search,
+    stats,
+    uploads,
+    admin,
+    notifications,
+    maintenance_preventive,
+    convoyeurs,
+    base_connaissances,
+    kpi,
+    checklists,
+    bons_travail,
+    import_export,
+    saved_filters,
+    push,
+    public_api,
+    extra,
 )
 from app.core.config import ALLOWED_ORIGINS, BOOTSTRAP_ADMIN, BOOTSTRAP_ADMIN_PASSWORD, UPLOAD_DIR
 from app.core.logging import configure_logging, get_logger
@@ -94,9 +112,9 @@ app.add_middleware(
 )
 
 # Middleware de logging des requêtes HTTP
-import time as _time
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as _Req
+import time as _time  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.requests import Request as _Req  # noqa: E402
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -190,7 +208,11 @@ def health():
     try:
         upload_usage = shutil.disk_usage(UPLOAD_DIR)
         # Count files in upload dir
-        upload_files = sum(1 for _ in os.scandir(UPLOAD_DIR) if _.is_file()) if os.path.isdir(UPLOAD_DIR) else 0
+        upload_files = (
+            sum(1 for _ in os.scandir(UPLOAD_DIR) if _.is_file())
+            if os.path.isdir(UPLOAD_DIR)
+            else 0
+        )
         health_data["uploads"] = {
             "disk_free_gb": round(upload_usage.free / (1024**3), 2),
             "disk_total_gb": round(upload_usage.total / (1024**3), 2),

@@ -24,8 +24,12 @@ class InterventionChecklist(Base):
     __tablename__ = "intervention_checklists"
 
     id = Column(Integer, primary_key=True, index=True)
-    intervention_id = Column(Integer, ForeignKey("interventions.id", ondelete="CASCADE"), nullable=False)
-    checklist_id = Column(Integer, ForeignKey("safety_checklists.id", ondelete="CASCADE"), nullable=False)
+    intervention_id = Column(
+        Integer, ForeignKey("interventions.id", ondelete="CASCADE"), nullable=False
+    )
+    checklist_id = Column(
+        Integer, ForeignKey("safety_checklists.id", ondelete="CASCADE"), nullable=False
+    )
     etapes_cochees = Column(JSON, default=[])
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
