@@ -17,7 +17,13 @@ from app.schemas.bon_travail import (
     BTCompteurCreate,
     BTVisaCreate,
 )
-from app.core.security import get_current_user, require_manager_or_admin, require_admin
+from app.core.security import (
+    get_current_user,
+    require_manager_or_admin,
+    require_admin,
+    require_edit_access,
+    require_signatory_role,
+)
 from app.core.activity import log_activity, apply_update_and_log
 
 router = APIRouter(prefix="/api/bons-travail", tags=["bons-travail"])
@@ -281,7 +287,7 @@ def add_gamme(
     bt_id: int,
     g_in: BTGammeCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_edit_access),
 ):
     bt = db.query(BonTravail).filter(BonTravail.id == bt_id).first()
     if not bt:
@@ -299,7 +305,7 @@ def update_gamme(
     gamme_id: int,
     g_in: BTGammeUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_edit_access),
 ):
     g = db.query(BTGamme).filter(BTGamme.id == gamme_id, BTGamme.bt_id == bt_id).first()
     if not g:
@@ -334,7 +340,7 @@ def add_piece(
     bt_id: int,
     p_in: BTPieceCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_edit_access),
 ):
     bt = db.query(BonTravail).filter(BonTravail.id == bt_id).first()
     if not bt:
@@ -375,7 +381,7 @@ def add_compteur(
     bt_id: int,
     c_in: BTCompteurCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_edit_access),
 ):
     bt = db.query(BonTravail).filter(BonTravail.id == bt_id).first()
     if not bt:
@@ -393,7 +399,7 @@ def update_compteur(
     compteur_id: int,
     c_in: BTCompteurCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_edit_access),
 ):
     c = db.query(BTCompteur).filter(BTCompteur.id == compteur_id, BTCompteur.bt_id == bt_id).first()
     if not c:
@@ -413,11 +419,12 @@ def add_visa(
     bt_id: int,
     v_in: BTVisaCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_edit_access),
 ):
     bt = db.query(BonTravail).filter(BonTravail.id == bt_id).first()
     if not bt:
         raise HTTPException(status_code=404, detail="Bon de travail non trouvé")
+    require_signatory_role(current_user.role, v_in.role)
     v = BTVisa(bt_id=bt_id, date_visa=datetime.utcnow(), **v_in.model_dump())
     db.add(v)
     db.commit()
