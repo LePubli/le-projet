@@ -275,16 +275,24 @@ docker logs sec-agent | grep "Surveillance active"
 
 ---
 
-## Dette technique à traiter
+## Dette technique
 
-Ces points ne bloquent pas ce déploiement mais poseront problème plus tard.
+Historique des points relevés lors de la mise en place de ce déploiement.
+Les 4 points ci-dessous sont résolus (dernier en date : 2026-09-12) ; la
+section reste comme référence sur ce qui a été trouvé et corrigé.
 
-### 1. Le projet n'est pas déployable from scratch
+### 1. Le projet n'est pas déployable from scratch — corrigé
 
-**`backend/entrypoint.sh`** — le bloc « colonne rotation » (ligne ~64) s'exécute
-avant `alembic upgrade head` (ligne ~79) et plante sur base vierge. Le déplacer
-**après** les migrations, ou le rendre non bloquant avec `2>/dev/null || true`
-comme le bloc juste au-dessus.
+**`backend/entrypoint.sh`** — ✅ Fait (2026-09-12). Le bloc « colonne rotation »
+s'exécutait avant `alembic upgrade head` et plantait sur base vierge (aucune
+migration ne crée jamais `machines.rotation` — le commentaire l'attribuant à
+la migration 0008 était inexact : 0008 ne fait que seeder des équipements).
+Vérification faite qu'aucune migration entre 0008 et head ne dépend de
+l'existence de cette colonne. Plutôt que de déplacer le bloc ou de le rendre
+non bloquant, la colonne est désormais créée par une vraie migration Alembic
+idempotente (`backend/alembic/versions/0021_machine_rotation.py`, même
+pattern que 0011/0017 : `information_schema.columns` puis `add_column` si
+absente) et le bloc manuel a été supprimé d'`entrypoint.sh`.
 
 **`backend/alembic/versions/0011_taille_pastille_float.py`** — ✅ Fait. La
 migration vérifie désormais en début de `upgrade()` si `machines.taille_pastille`
@@ -293,12 +301,14 @@ directement `couleur` (String(7)) et `taille_pastille` (Float) avec
 `op.add_column` puis retourne, sans passer par la conversion INTEGER→FLOAT
 ci-dessous (celle-ci reste inchangée pour les bases déjà migrées).
 
-Test de non-régression : `docker compose down -v && docker compose up -d` sur
-une base vierge doit aboutir à une application fonctionnelle. Non exécuté de
-bout en bout faute de Postgres disponible dans cette session — le correctif
-0011 est vérifié par relecture de code, chargement du module Alembic et la
-suite de tests existante, mais pas encore par un déploiement réel from
-scratch.
+Test de non-régression : exécuté de bout en bout le 2026-09-12 sur un
+conteneur Postgres jetable (pas besoin de la stack Docker complète, qui
+référence des images `:prod` prégénérées) —
+`alembic upgrade head` depuis une base vierge passe les 21 migrations sans
+erreur et crée `rotation` ; `alembic downgrade -1` puis re-`upgrade head`
+repasse proprement ; et le scénario prod (colonne `rotation` déjà présente
+avant migration, ex. base restaurée depuis un dump) confirmé idempotent —
+aucune tentative de recréer la colonne.
 
 ### 2. Les migrations SQL manuelles à la racine
 
@@ -308,18 +318,11 @@ de `migration_v23.sql`, qui créait `machines.couleur`/`machines.taille_pastille
 — rendu inutile par le correctif de la migration 0011 ci-dessus). Supprimés
 de la racine.
 
-### 3. `.env` versionné dans le repo public
+### 3. `.env` versionné dans le repo public — déjà résolu
 
-Le fichier s'appelle `.env` et non `.env.example`. Il ne contient que des
-placeholders aujourd'hui, mais sur un repo **public** c'est un accident qui
-attend de se produire : un `git add .` un peu rapide depuis un poste de dev où
-le fichier est rempli, et les secrets partent en ligne.
-
-```bash
-git mv .env .env.example
-echo ".env" >> .gitignore
-git commit -m "chore: .env -> .env.example pour éviter tout commit accidentel de secrets"
-```
+Vérifié le 2026-09-12 : `.env` n'existe plus dans le repo (ni tracké, ni
+présent sur disque), et `.gitignore` contient déjà la règle `.env`. Aucun
+autre fichier `.env*` n'est présent dans `backend/` ou `frontend/`.
 
 ### 4. Contrôle d'accès insuffisant sur plusieurs endpoints — corrigé
 
