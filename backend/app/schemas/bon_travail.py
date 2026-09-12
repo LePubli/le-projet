@@ -1,6 +1,7 @@
 """Backend schemas → backend/app/schemas/bon_travail.py
    Pydantic schemas for Bons de Travail (Entretien / Nettoyage)
 """
+
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime

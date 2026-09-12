@@ -3,7 +3,6 @@ from typing import Optional
 from datetime import datetime
 
 
-
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: str
@@ -11,8 +10,9 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=8, max_length=72,
-                          description="Mot de passe (8-72 caractères)")
+    password: str = Field(
+        ..., min_length=8, max_length=72, description="Mot de passe (8-72 caractères)"
+    )
 
 
 class UserOut(UserBase):

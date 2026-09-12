@@ -12,7 +12,7 @@ class Piece(Base):
     nom = Column(String, nullable=False)
     stock = Column(Integer, default=0)
     seuil_alerte = Column(Integer, nullable=True)  # I: alerte quand stock <= seuil
-    prix_unitaire = Column(Float, nullable=True)   # I: prix pour calculs
+    prix_unitaire = Column(Float, nullable=True)  # I: prix pour calculs
     emplacement = Column(String)
     fournisseur = Column(String)
     description = Column(Text)

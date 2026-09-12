@@ -1,7 +1,18 @@
 """Backend model → backend/app/models/bon_travail.py
    Tables: bons_travail, bt_gammes, bt_pieces, bt_compteurs, bt_visa
 """
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, Boolean, ForeignKey, JSON, Enum as SAEnum
+
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    Text,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    JSON,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.database import Base
@@ -32,7 +43,7 @@ class BonTravail(Base):
 
     # Machine liée
     machine_id = Column(Integer, ForeignKey("machines.id", ondelete="SET NULL"), nullable=True)
-    
+
     # Arborescence (chemin complet, ex: "Z-Essai > LBP > LBP1 > L400 - Glass breaker")
     arborescence = Column(Text, nullable=True)
 
@@ -68,9 +79,16 @@ class BonTravail(Base):
     solution_medias = Column(JSON, default=[])
 
     # Relations
-    gammes = relationship("BTGamme", back_populates="bon_travail", cascade="all, delete-orphan", order_by="BTGamme.ordre")
+    gammes = relationship(
+        "BTGamme",
+        back_populates="bon_travail",
+        cascade="all, delete-orphan",
+        order_by="BTGamme.ordre",
+    )
     pieces = relationship("BTPiece", back_populates="bon_travail", cascade="all, delete-orphan")
-    compteurs = relationship("BTCompteur", back_populates="bon_travail", cascade="all, delete-orphan")
+    compteurs = relationship(
+        "BTCompteur", back_populates="bon_travail", cascade="all, delete-orphan"
+    )
     visas = relationship("BTVisa", back_populates="bon_travail", cascade="all, delete-orphan")
 
     # Relations FK vers Machine / User (lazy='joined' évite les N+1 sur la liste)
@@ -141,7 +159,9 @@ class BTVisa(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     bt_id = Column(Integer, ForeignKey("bons_travail.id", ondelete="CASCADE"), nullable=False)
-    role = Column(String(100), nullable=True)  # ex: "Intervenant", "Responsable", "Contrôle qualité"
+    role = Column(
+        String(100), nullable=True
+    )  # ex: "Intervenant", "Responsable", "Contrôle qualité"
     nom = Column(String(100), nullable=True)
     visa = Column(String(500), nullable=True)  # Signature text ou data URL
     date_visa = Column(DateTime(timezone=True), nullable=True)

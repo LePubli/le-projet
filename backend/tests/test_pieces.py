@@ -1,4 +1,5 @@
 """Tests des endpoints pieces : autorisations."""
+
 from tests.conftest import auth_headers
 from app.models.piece import Piece
 

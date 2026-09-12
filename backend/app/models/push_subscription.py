@@ -1,4 +1,5 @@
 """Modèle pour les abonnements push (Web Push API)."""
+
 from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.sql import func
 from app.db.database import Base

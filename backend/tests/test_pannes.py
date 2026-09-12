@@ -1,4 +1,5 @@
 """Tests des endpoints pannes : validation, autorisations."""
+
 from tests.conftest import auth_headers
 from app.models.machine import Machine
 
@@ -104,6 +105,7 @@ def test_tech_can_create_panne(client, tech_token, db_session):
 def test_tech_cannot_delete_panne(client, tech_token, db_session):
     """Technicien NE peut PAS supprimer une panne (require_manager_or_admin)."""
     from app.models.panne import Panne
+
     machine = _create_machine(db_session)
     panne = Panne(machine_id=machine.id, titre="Test", criticite=3)
     db_session.add(panne)
@@ -120,6 +122,7 @@ def test_tech_cannot_delete_panne(client, tech_token, db_session):
 def test_manager_can_delete_panne(client, admin_token, db_session):
     """Admin peut supprimer une panne."""
     from app.models.panne import Panne
+
     machine = _create_machine(db_session)
     panne = Panne(machine_id=machine.id, titre="Test", criticite=3)
     db_session.add(panne)

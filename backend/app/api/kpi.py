@@ -20,10 +20,14 @@ def dashboard_kpi(db: Session = Depends(get_db), _=Depends(get_current_user)):
     now = datetime.now(tz=timezone.utc)
 
     # ── MTTR : temps moyen de réparation (en minutes) ─────────────────
-    mttr_rows = db.query(func.avg(Intervention.duree)).filter(
-        Intervention.statut.in_(TERMINATED_STATUTS),
-        Intervention.duree.isnot(None),
-    ).first()
+    mttr_rows = (
+        db.query(func.avg(Intervention.duree))
+        .filter(
+            Intervention.statut.in_(TERMINATED_STATUTS),
+            Intervention.duree.isnot(None),
+        )
+        .first()
+    )
     mttr = round(mttr_rows[0], 1) if mttr_rows and mttr_rows[0] else 0
 
     # ── MTBF : temps moyen entre pannes par machine (en jours) ────────
@@ -36,13 +40,20 @@ def dashboard_kpi(db: Session = Depends(get_db), _=Depends(get_current_user)):
         mtbf = round(days_span / (pannes_count / max(machines_count, 1)), 1)
 
     # ── Taux de disponibilité ─────────────────────────────────────────
-    total_repair_minutes = db.query(func.coalesce(func.sum(Intervention.duree), 0)).filter(
-        Intervention.statut.in_(TERMINATED_STATUTS),
-        Intervention.duree.isnot(None),
-    ).scalar()
+    total_repair_minutes = (
+        db.query(func.coalesce(func.sum(Intervention.duree), 0))
+        .filter(
+            Intervention.statut.in_(TERMINATED_STATUTS),
+            Intervention.duree.isnot(None),
+        )
+        .scalar()
+    )
     total_operational_minutes = machines_count * 525600  # 365*24*60 par machine
     taux_disponibilite = round(
-        (total_operational_minutes - total_repair_minutes) / max(total_operational_minutes, 1) * 100, 2
+        (total_operational_minutes - total_repair_minutes)
+        / max(total_operational_minutes, 1)
+        * 100,
+        2,
     )
 
     # ── Top 5 machines avec le plus de pannes (heatmap) ───────────────
@@ -101,9 +112,7 @@ def dashboard_kpi(db: Session = Depends(get_db), _=Depends(get_current_user)):
         .order_by(func.sum(Intervention.duree).desc())
         .all()
     )
-    temps_par_technicien = [
-        {"technicien": t, "total_minutes": m} for t, m in temps_technicien
-    ]
+    temps_par_technicien = [{"technicien": t, "total_minutes": m} for t, m in temps_technicien]
 
     # ── Pièces les plus utilisées (top 10) ───────────────────────────
     top_pieces = (
@@ -120,7 +129,12 @@ def dashboard_kpi(db: Session = Depends(get_db), _=Depends(get_current_user)):
         .all()
     )
     pieces_utilisees = [
-        {"piece_id": p.id, "reference": p.reference, "nom": p.nom, "total_utilisee": p.total_utilisee}
+        {
+            "piece_id": p.id,
+            "reference": p.reference,
+            "nom": p.nom,
+            "total_utilisee": p.total_utilisee,
+        }
         for p in top_pieces
     ]
 
@@ -159,13 +173,12 @@ def dashboard_kpi(db: Session = Depends(get_db), _=Depends(get_current_user)):
         .order_by(Panne.criticite)
         .all()
     )
-    criticite_distribution = [
-        {"criticite": c or 3, "count": cnt} for c, cnt in criticite_dist
-    ]
+    criticite_distribution = [{"criticite": c or 3, "count": cnt} for c, cnt in criticite_dist]
 
     # ── Pannes par statut (pour vue d'ensemble) ──────────────────────
     # Statut des BT comme proxy pour l'activité en cours
     from app.models.bon_travail import BonTravail
+
     bt_statut_dist = (
         db.query(BonTravail.statut, func.count(BonTravail.id).label("count"))
         .group_by(BonTravail.statut)
@@ -220,7 +233,8 @@ def heatmap_data(
             .join(Machine, Machine.id == Panne.machine_id)
             .filter(Machine.zone == zone, Panne.created_at >= since)
             .count()
-            if since else 0
+            if since
+            else 0
         )
         avg_crit = (
             db.query(func.avg(Panne.criticite))
@@ -228,23 +242,22 @@ def heatmap_data(
             .filter(Machine.zone == zone)
             .scalar()
         )
-        zone_data.append({
-            "zone": zone,
-            "pannes_ouvertes": open_pannes,
-            "pannes_30j": recent_pannes,
-            "avg_criticite": round(avg_crit, 1) if avg_crit else 0,
-        })
+        zone_data.append(
+            {
+                "zone": zone,
+                "pannes_ouvertes": open_pannes,
+                "pannes_30j": recent_pannes,
+                "avg_criticite": round(avg_crit, 1) if avg_crit else 0,
+            }
+        )
 
     # ── Par machine avec pannes (filtré par période si days > 0) ─────
-    machines_q = (
-        db.query(
-            Machine.id,
-            Machine.nom,
-            func.count(Panne.id).label("panne_count"),
-            func.avg(Panne.criticite).label("avg_criticite"),
-        )
-        .join(Panne, Panne.machine_id == Machine.id)
-    )
+    machines_q = db.query(
+        Machine.id,
+        Machine.nom,
+        func.count(Panne.id).label("panne_count"),
+        func.avg(Panne.criticite).label("avg_criticite"),
+    ).join(Panne, Panne.machine_id == Machine.id)
     if since:
         machines_q = machines_q.filter(Panne.created_at >= since)
     machines_pannes = machines_q.group_by(Machine.id).order_by(func.count(Panne.id).desc()).all()

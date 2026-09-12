@@ -4,10 +4,11 @@ L'API publique permet à des systèmes tiers (ERP, supervision) d'accéder
 aux données en lecture via un token dédié (header X-API-Token),
 sans nécessiter de compte utilisateur JWT.
 """
+
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, distinct
+from sqlalchemy import distinct
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from typing import Optional, List
@@ -15,8 +16,6 @@ from app.db.database import get_db
 from app.models.api_token import ApiToken
 from app.models.machine import Machine
 from app.models.panne import Panne
-from app.models.bon_travail import BonTravail
-from app.models.intervention import Intervention
 from app.core.security import require_admin
 from app.core.logging import get_logger
 
@@ -36,6 +35,7 @@ class ApiTokenOut(BaseModel):
     is_active: bool
     created_at: Optional[datetime] = None
     last_used: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 
@@ -52,10 +52,14 @@ def get_api_token(
     """Vérifie le token API dans le header X-API-Token."""
     if not x_api_token:
         raise HTTPException(status_code=401, detail="X-API-Token header requis")
-    token = db.query(ApiToken).filter(
-        ApiToken.token == x_api_token,
-        ApiToken.is_active == True,
-    ).first()
+    token = (
+        db.query(ApiToken)
+        .filter(
+            ApiToken.token == x_api_token,
+            ApiToken.is_active,
+        )
+        .first()
+    )
     if not token:
         raise HTTPException(status_code=403, detail="Token API invalide ou désactivé")
     # Mettre à jour last_used
@@ -107,6 +111,7 @@ def toggle_token(token_id: int, db: Session = Depends(get_db), _=Depends(require
 
 # ─── Endpoints publics (lecture seule, via X-API-Token) ─────
 
+
 @public_router.get("/machines")
 def public_machines(
     site: Optional[str] = None,
@@ -117,9 +122,12 @@ def public_machines(
 ):
     """Liste des machines (lecture seule pour intégration ERP)."""
     q = db.query(Machine)
-    if site: q = q.filter(Machine.site == site)
-    if ligne: q = q.filter(Machine.ligne == ligne)
-    if zone: q = q.filter(Machine.zone == zone)
+    if site:
+        q = q.filter(Machine.site == site)
+    if ligne:
+        q = q.filter(Machine.ligne == ligne)
+    if zone:
+        q = q.filter(Machine.zone == zone)
     return q.limit(500).all()
 
 
@@ -133,8 +141,10 @@ def public_pannes(
 ):
     """Liste des pannes récentes (lecture seule)."""
     q = db.query(Panne)
-    if machine_id: q = q.filter(Panne.machine_id == machine_id)
-    if criticite_min: q = q.filter(Panne.criticite >= criticite_min)
+    if machine_id:
+        q = q.filter(Panne.machine_id == machine_id)
+    if criticite_min:
+        q = q.filter(Panne.criticite >= criticite_min)
     if days > 0:
         since = datetime.now(timezone.utc) - timedelta(days=days)
         q = q.filter(Panne.created_at >= since)
@@ -159,7 +169,9 @@ def public_kpi(
         "open_pannes": open_pannes,
         "critical_pannes": critical_pannes,
         "machines_en_panne": machines_en_panne,
-        "taux_disponibilite": round((total_machines - machines_en_panne) / max(total_machines, 1) * 100, 2),
+        "taux_disponibilite": round(
+            (total_machines - machines_en_panne) / max(total_machines, 1) * 100, 2
+        ),
     }
 
 

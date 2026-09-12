@@ -10,6 +10,7 @@ Sécurité
   frontend. On garde une protection contre le hot-linking externe via
   Referer/Origin check optionnel (UPLOAD_ALLOW_HOTLINK=1 pour désactiver).
 """
+
 import os
 import uuid
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Request
@@ -34,7 +35,12 @@ MIME_SIGNATURES = {
     # Vidéos : MP4 (ftyp), WebM (1A 45 DF A3), MOV/QuickTime (ftypqt ou mdat/free)
     ".mp4": [b"\x00\x00\x00\x18ftyp", b"\x00\x00\x00\x20ftyp", b"\x00\x00\x00\x1cftyp"],
     ".webm": [b"\x1a\x45\xdf\xa3"],
-    ".mov": [b"\x00\x00\x00\x14ftypqt", b"\x00\x00\x00\x18ftypqt", b"\x00\x00\x00\x1cftypqt", b"\x00\x00\x00\x20ftypqt"],
+    ".mov": [
+        b"\x00\x00\x00\x14ftypqt",
+        b"\x00\x00\x00\x18ftypqt",
+        b"\x00\x00\x00\x1cftypqt",
+        b"\x00\x00\x00\x20ftypqt",
+    ],
 }
 
 # MIME types pour les en-têtes de réponse
@@ -52,9 +58,14 @@ MIME_TYPES = {
 
 # Type logique pour le frontend (image vs video) — dérivé de l'extension
 MEDIA_KIND = {
-    ".jpg": "image", ".jpeg": "image", ".png": "image",
-    ".gif": "image", ".webp": "image",
-    ".mp4": "video", ".webm": "video", ".mov": "video",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".png": "image",
+    ".gif": "image",
+    ".webp": "image",
+    ".mp4": "video",
+    ".webm": "video",
+    ".mov": "video",
 }
 
 
@@ -148,6 +159,7 @@ async def get_file(filename: str, request: Request):
         origin = request.headers.get("origin", "")
         host = request.headers.get("host", "")
         from urllib.parse import urlparse
+
         for url in (referer, origin):
             if not url:
                 continue

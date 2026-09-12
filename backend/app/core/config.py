@@ -4,6 +4,7 @@ Toutes les variables sensibles DOIVENT être fournies via les variables
 d'environnement. Aucune valeur par défaut n'est codée en dur pour les
 secrets (SECRET_KEY, mots de passe).
 """
+
 import os
 import sys
 from typing import List
@@ -69,7 +70,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 MAX_UPLOAD_SIZE: int = int(os.getenv("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))
 
 # --- Web Push (VAPID keys) --------------------------------------------------
-# Générer avec : python -c "from pywebpush import webpush; from py_vapid import Vapid; v = Vapid(); v.generate_keys('private_key.pem'); print(v.generate_vapid_keys())"
+# Générer avec : python -c "from pywebpush import webpush; from py_vapid import Vapid; v = Vapid(); v.generate_keys('private_key.pem'); print(v.generate_vapid_keys())"  # noqa: E501
 # Ou utiliser : npx web-push generate-vapid-keys
 VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")

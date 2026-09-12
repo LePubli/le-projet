@@ -1,9 +1,8 @@
 """Web Push notifications — abonnement et envoi de push."""
-import os
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
 from app.db.database import get_db
 from app.models.push_subscription import PushSubscription
 from app.core.security import get_current_user
@@ -39,9 +38,7 @@ def subscribe(
         raise HTTPException(status_code=400, detail="Subscription invalide")
 
     # Upsert : si l'endpoint existe déjà, on met à jour l'user_id
-    existing = db.query(PushSubscription).filter(
-        PushSubscription.endpoint == body.endpoint
-    ).first()
+    existing = db.query(PushSubscription).filter(PushSubscription.endpoint == body.endpoint).first()
     if existing:
         existing.user_id = current_user.id
         existing.p256dh = body.keys["p256dh"]
@@ -66,10 +63,14 @@ def unsubscribe(
     current_user=Depends(get_current_user),
 ):
     """Désabonne l'endpoint des notifications push."""
-    sub = db.query(PushSubscription).filter(
-        PushSubscription.endpoint == body.endpoint,
-        PushSubscription.user_id == current_user.id,
-    ).first()
+    sub = (
+        db.query(PushSubscription)
+        .filter(
+            PushSubscription.endpoint == body.endpoint,
+            PushSubscription.user_id == current_user.id,
+        )
+        .first()
+    )
     if sub:
         db.delete(sub)
         db.commit()
@@ -119,6 +120,7 @@ def broadcast_push(db: Session, title: str, message: str, url: str = "/"):
     À utiliser pour les pannes critiques (criticite >= 4).
     """
     from sqlalchemy import distinct
+
     user_ids = db.query(distinct(PushSubscription.user_id)).all()
     total_sent = 0
     for (uid,) in user_ids:

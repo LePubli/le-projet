@@ -15,21 +15,31 @@ def get_stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
     total_machines = db.query(Machine).count()
     total_pannes = db.query(Panne).count()
     total_interventions = db.query(Intervention).count()
-    interventions_validees = db.query(Intervention).filter(Intervention.validee == True).count()
+    interventions_validees = db.query(Intervention).filter(Intervention.validee).count()
 
-    top_pannes = db.query(Panne.titre, func.count(Intervention.id).label("count"))\
-        .join(Intervention, Intervention.panne_id == Panne.id, isouter=True)\
-        .group_by(Panne.id)\
-        .order_by(func.count(Intervention.id).desc())\
-        .limit(5).all()
+    top_pannes = (
+        db.query(Panne.titre, func.count(Intervention.id).label("count"))
+        .join(Intervention, Intervention.panne_id == Panne.id, isouter=True)
+        .group_by(Panne.id)
+        .order_by(func.count(Intervention.id).desc())
+        .limit(5)
+        .all()
+    )
 
     avg_repair = db.query(func.avg(Panne.temps_moyen_reparation)).scalar()
 
-    machines_statut = db.query(Machine.statut, func.count(Machine.id).label("count"))\
-        .group_by(Machine.statut).all()
+    machines_statut = (
+        db.query(Machine.statut, func.count(Machine.id).label("count"))
+        .group_by(Machine.statut)
+        .all()
+    )
 
-    pannes_criticite = db.query(Panne.criticite, func.count(Panne.id).label("count"))\
-        .group_by(Panne.criticite).order_by(Panne.criticite).all()
+    pannes_criticite = (
+        db.query(Panne.criticite, func.count(Panne.id).label("count"))
+        .group_by(Panne.criticite)
+        .order_by(Panne.criticite)
+        .all()
+    )
 
     return {
         "total_machines": total_machines,
