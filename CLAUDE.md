@@ -27,8 +27,11 @@ encadrement. Priorité actuelle : réduire complexité et duplication
 - Frontend : `pages/` (28) + `components/` (9) + `services/api.ts` unique
   (axios, pas de TanStack Query). `SiteContext` (multi-site) injecte
   `?site=xxx` via intercepteur.
-- La prod restaure un dump SQL plutôt que de rejouer les migrations (deux
-  bugs connus l'en empêchent, voir README « Dette technique »). Migration
+- La prod restaure un dump SQL plutôt que de rejouer les migrations. Les deux
+  bugs qui bloquaient un replay complet (colonnes `couleur`/`taille_pastille`,
+  colonne `rotation`) sont corrigés et testés depuis le 2026-09-12 (voir
+  README « Dette technique ») ; le choix opérationnel de restaurer un dump
+  n'a pas été changé pour autant — à réévaluer séparément si besoin. Migration
   Alembic appliquée = jamais modifiée, on corrige en avant.
 - `docker-compose.yml` = variante DockPanel (pas de `build:`, port local,
   volumes nommés) ; écarts documentés en en-tête.
