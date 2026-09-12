@@ -117,3 +117,32 @@ def require_edit_access(current_user=Depends(get_current_user)):
     if current_user.role == "lecteur":
         raise HTTPException(status_code=403, detail="Accès en lecture uniquement")
     return current_user
+
+
+# Rôles système autorisés à s'attribuer chaque rôle de signature/visa déclaré
+# par le client (visas de Bon de Travail, signatures électroniques). Empêche
+# qu'un utilisateur s'auto-attribue un visa "Responsable" ou "Contrôle
+# qualité" sans en avoir l'autorité réelle.
+_SIGNATORY_ROLES = {
+    "intervenant": ("admin", "chef_equipe", "technicien"),
+    "responsable": ("admin", "chef_equipe"),
+    "controle": ("admin", "chef_equipe"),
+    "contrôle qualité": ("admin", "chef_equipe"),
+}
+
+
+def require_signatory_role(current_user_role: str, claimed_role: Optional[str]) -> None:
+    """Vérifie que `current_user_role` a le droit de signer/viser en tant que
+    `claimed_role` (déclaré par le client). Ne fait rien si `claimed_role` est
+    vide — rien n'est usurpé si aucun rôle n'est déclaré."""
+    if not claimed_role:
+        return
+    key = claimed_role.strip().lower()
+    allowed = _SIGNATORY_ROLES.get(key)
+    if allowed is None:
+        raise HTTPException(status_code=400, detail=f"Rôle de signature invalide : {claimed_role}")
+    if current_user_role not in allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Vous n'avez pas l'autorisation de signer en tant que « {claimed_role} »",
+        )

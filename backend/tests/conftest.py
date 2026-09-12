@@ -91,6 +91,38 @@ def tech_user(db_session):
 
 
 @pytest.fixture
+def lecteur_user(db_session):
+    """Crée un utilisateur lecteur (lecture seule) de test."""
+    user = User(
+        username="lecteur_test",
+        email="lecteur@test.com",
+        hashed_password=get_password_hash("TestPassword123"),
+        role="lecteur",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def chef_equipe_user(db_session):
+    """Crée un utilisateur chef d'équipe de test."""
+    user = User(
+        username="chef_test",
+        email="chef@test.com",
+        hashed_password=get_password_hash("TestPassword123"),
+        role="chef_equipe",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
 def admin_token(client, admin_user):
     """Récupère un token admin."""
     response = client.post(
@@ -107,6 +139,28 @@ def tech_token(client, tech_user):
     response = client.post(
         "/api/auth/login",
         data={"username": "tech_test", "password": "TestPassword123"},
+    )
+    assert response.status_code == 200, f"Login failed: {response.text}"
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+def lecteur_token(client, lecteur_user):
+    """Récupère un token lecteur."""
+    response = client.post(
+        "/api/auth/login",
+        data={"username": "lecteur_test", "password": "TestPassword123"},
+    )
+    assert response.status_code == 200, f"Login failed: {response.text}"
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+def chef_equipe_token(client, chef_equipe_user):
+    """Récupère un token chef d'équipe."""
+    response = client.post(
+        "/api/auth/login",
+        data={"username": "chef_test", "password": "TestPassword123"},
     )
     assert response.status_code == 200, f"Login failed: {response.text}"
     return response.json()["access_token"]

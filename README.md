@@ -321,6 +321,46 @@ echo ".env" >> .gitignore
 git commit -m "chore: .env -> .env.example pour éviter tout commit accidentel de secrets"
 ```
 
+### 4. Contrôle d'accès insuffisant sur plusieurs endpoints — corrigé
+
+Trouvé par une revue de sécurité sur le commit initial (2026-09-11), corrigé
+et testé le 2026-09-12.
+
+**Autorisation manquante** — `backend/app/api/bons_travail.py` : `add_gamme`,
+`update_gamme`, `add_piece`, `add_compteur`, `update_compteur` n'exigeaient
+qu'un utilisateur authentifié (`get_current_user`), sans vérification de
+rôle. Incohérent avec `delete_gamme`/`delete_piece`, qui exigent
+correctement `require_manager_or_admin`. Un compte `lecteur` (censé être
+lecture seule) pouvait donc modifier gammes, pièces et compteurs.
+→ Ces endpoints exigent désormais `require_edit_access` (bloque `lecteur`),
+ainsi que `add_visa` (`bons_travail.py`) et `add_signature` (`extra.py`), qui
+n'étaient pas listés dans le constat initial mais avaient la même faille.
+
+**Champ `role` usurpable** — deux endroits où un champ `role` entièrement
+contrôlé par le client est stocké comme attestation sans aucune validation
+contre le rôle réel de l'utilisateur :
+- `backend/app/api/bons_travail.py:add_visa` — `BTVisaCreate.role`
+  (`"Intervenant"`, `"Responsable"`, `"Contrôle qualité"`)
+- `backend/app/api/extra.py:add_signature` — `SignatureBody.role`
+  (`"intervenant"|"responsable"|"controle"`)
+
+N'importe quel utilisateur authentifié pouvait donc s'auto-attribuer un visa
+ou une signature « Contrôle qualité » sur un Bon de Travail.
+→ `require_signatory_role` (`backend/app/core/security.py`) valide désormais
+le rôle déclaré contre le rôle système de l'utilisateur (mapping
+`_SIGNATORY_ROLES`) et est appelée dans `add_visa` et `add_signature`.
+
+**Constat plus large** — `require_edit_access` (`backend/app/core/security.py`),
+censée bloquer les `lecteur` en écriture (docstring explicite), n'était
+**utilisée nulle part** dans le code. Le rôle `lecteur` n'était donc pas
+réellement lecture-seule sur l'API, quel que soit l'endpoint.
+→ Désormais utilisée sur les 7 endpoints listés ci-dessus. Aucun autre
+appelant de `get_current_user` dans `bons_travail.py`/`extra.py` n'a été
+identifié comme nécessitant le même traitement (le reste sont des lectures
+ou déjà protégés par `require_manager_or_admin`/`require_admin`).
+
+Tests de non-régression : `backend/tests/test_bt_authorization.py`.
+
 ---
 
 ## Dépannage

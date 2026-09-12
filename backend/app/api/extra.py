@@ -21,7 +21,12 @@ from app.models.piece import Piece
 from app.models.panne import Panne
 from app.models.user import User
 from app.models.bon_travail import BonTravail
-from app.core.security import get_current_user, require_manager_or_admin
+from app.core.security import (
+    get_current_user,
+    require_manager_or_admin,
+    require_edit_access,
+    require_signatory_role,
+)
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -302,7 +307,7 @@ def add_signature(
     bt_id: int,
     body: SignatureBody,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_edit_access),
 ):
     """Ajoute une signature électronique sur un Bon de Travail.
     La signature est stockée comme data URL dans le champ compte_rendu
@@ -310,6 +315,8 @@ def add_signature(
     bt = db.query(BonTravail).filter(BonTravail.id == bt_id).first()
     if not bt:
         raise HTTPException(status_code=404, detail="BT introuvable")
+
+    require_signatory_role(current_user.role, body.role)
 
     # Stocker la signature
     sig_marker = f"[SIG:{body.role}:{current_user.username}:{datetime.now().isoformat()}]{body.signature_data}[/SIG]"
