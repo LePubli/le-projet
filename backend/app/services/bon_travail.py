@@ -4,7 +4,7 @@ Fonctions sans dépendance FastAPI : appelables depuis l'API, les tests
 unitaires ou d'autres services.
 """
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models.bon_travail import BonTravail, BTGamme, BTCompteur
 from app.schemas.bon_travail import BonTravailCreate
 
@@ -97,9 +97,14 @@ def create_bt(db: Session, bt_in: BonTravailCreate, current_user_id: int) -> Bon
             )
         )
 
+    bt_id = bt.id
     db.commit()
-    db.refresh(bt)
-    return bt
+    return (
+        db.query(BonTravail)
+        .options(joinedload(BonTravail.gammes), joinedload(BonTravail.compteurs))
+        .filter(BonTravail.id == bt_id)
+        .first()
+    )
 
 
 def recalculate_cout_total(bt: BonTravail) -> float:
