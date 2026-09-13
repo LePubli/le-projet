@@ -59,7 +59,7 @@ class PanneService:
             except Exception:
                 pass  # Push est optionnel — ne pas faire échouer la création de panne
             try:
-                from app.api.extra import notify_panne_critique_email
+                from app.services.extra import notify_panne_critique_email
 
                 notify_panne_critique_email(db, panne, user.username)
             except Exception:
