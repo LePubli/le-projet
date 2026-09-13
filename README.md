@@ -364,6 +364,30 @@ ou déjà protégés par `require_manager_or_admin`/`require_admin`).
 
 Tests de non-régression : `backend/tests/test_bt_authorization.py`.
 
+### 5. Rate-limiting du login jamais actif — corrigé
+
+Trouvé le 2026-09-13 en investiguant une flakiness de test (non liée — voir
+NOTES.md de session), corrigé le jour même.
+
+`backend/app/main.py` définit `limiter = Limiter(...)` **après** avoir importé
+les routers (`from app.api import auth, ...`), mais `backend/app/api/auth.py`
+fait `from app.main import limiter` **à son propre import**. Au moment où
+Python exécute cet import, `app.main` est en cours de chargement et n'a pas
+encore défini `limiter` : l'import échouait systématiquement (import
+circulaire), et le `except` de secours dans `auth.py` remplaçait le
+rate-limit par une fonction identité. Résultat : la limite de 5 tentatives de
+connexion par minute annoncée dans la docstring de l'endpoint `/api/auth/login`
+n'a **jamais été appliquée, ni en test ni en production**. Vérifié par un
+essai direct : 8 tentatives de connexion consécutives → 8× code 200, aucun 429.
+
+→ `limiter` est désormais défini avant l'import des routers dans `main.py`,
+et désactivé explicitement quand `TEST_MODE=1` (la suite de tests dépasse
+largement 5 logins/minute cumulés) au lieu de dépendre d'un import cassé.
+Le `try/except` dans `auth.py`, devenu sans objet, a été supprimé.
+
+Vérifié : 8 tentatives consécutives → 5× 200 puis 429 sans `TEST_MODE` ;
+8× 200 avec `TEST_MODE=1`.
+
 ---
 
 ## Dépannage

@@ -16,16 +16,10 @@ from app.core.security import (
 )
 from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES, LOGIN_RATE_LIMIT
 from app.core.activity import log_activity
+from app.main import limiter
 
-# Rate limiting sur le login (slowapi)
-try:
-    from app.main import limiter
-
-    _rate_decorator = limiter.limit(LOGIN_RATE_LIMIT)
-except Exception:
-    # Fallback si limiter non disponible (tests)
-    def _rate_decorator(func):
-        return func
+# Rate limiting sur le login (slowapi) — désactivé en TEST_MODE (voir app.main.limiter)
+_rate_decorator = limiter.limit(LOGIN_RATE_LIMIT)
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

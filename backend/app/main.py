@@ -3,12 +3,29 @@
 import os
 import shutil
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from app.api import (
+from app.db.database import get_db
+from app.core.config import ALLOWED_ORIGINS, BOOTSTRAP_ADMIN, BOOTSTRAP_ADMIN_PASSWORD, UPLOAD_DIR
+from app.core.logging import configure_logging, get_logger
+
+# Configure structlog avant toute chose
+configure_logging()
+log = get_logger(__name__)
+
+# Rate limiter global — DOIT être défini avant l'import des routers ci-dessous :
+# app/api/auth.py fait `from app.main import limiter` à son propre import, donc
+# l'attribut doit déjà exister sur ce module à ce moment précis. Sinon, import
+# circulaire silencieux et le rate-limit du login ne s'applique jamais — c'était
+# le cas avant ce correctif (le rate-limit du login n'a jamais été actif).
+# Désactivé en TEST_MODE : la suite de tests dépasse largement 5 logins/minute.
+limiter = Limiter(key_func=get_remote_address, enabled=os.getenv("TEST_MODE") != "1")
+
+from app.api import (  # noqa: E402
     auth,
     machines,
     pannes,
@@ -31,15 +48,6 @@ from app.api import (
     public_api,
     extra,
 )
-from app.core.config import ALLOWED_ORIGINS, BOOTSTRAP_ADMIN, BOOTSTRAP_ADMIN_PASSWORD, UPLOAD_DIR
-from app.core.logging import configure_logging, get_logger
-
-# Configure structlog avant toute chose
-configure_logging()
-log = get_logger(__name__)
-
-# Rate limiter global
-limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -176,13 +184,12 @@ app.include_router(extra.router)
 
 
 @app.get("/api/health", tags=["health"])
-def health():
+def health(db: Session = Depends(get_db)):
     """Endpoint de santé enrichi pour healthchecks Docker et monitoring.
 
     Vérifie : DB, espace disque uploads, version. Ne nécessite pas d'auth.
     """
     import psutil
-    from app.db.database import SessionLocal
     from sqlalchemy import text
 
     health_data = {
@@ -193,12 +200,8 @@ def health():
 
     # Check DB
     try:
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            health_data["db"] = "ok"
-        finally:
-            db.close()
+        db.execute(text("SELECT 1"))
+        health_data["db"] = "ok"
     except Exception as e:
         health_data["status"] = "degraded"
         health_data["db"] = f"error: {str(e)[:100]}"
