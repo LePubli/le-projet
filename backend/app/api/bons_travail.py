@@ -5,7 +5,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
+from datetime import datetime, timezone
 from app.db.database import get_db
 from app.models.bon_travail import BonTravail, BTGamme, BTPiece, BTCompteur, BTVisa
 from app.schemas.bon_travail import (
@@ -338,7 +338,7 @@ def add_visa(
     if not bt:
         raise HTTPException(status_code=404, detail="Bon de travail non trouvé")
     require_signatory_role(current_user.role, v_in.role)
-    v = BTVisa(bt_id=bt_id, date_visa=datetime.utcnow(), **v_in.model_dump())
+    v = BTVisa(bt_id=bt_id, date_visa=datetime.now(timezone.utc), **v_in.model_dump())
     db.add(v)
     db.commit()
     db.refresh(v)

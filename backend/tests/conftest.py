@@ -23,28 +23,25 @@ from app.models.user import User  # noqa: E402
 from app.core.security import get_password_hash  # noqa: E402
 
 
-# Base SQLite en mémoire pour les tests
-SQLALCHEMY_TEST_URL = "sqlite://"
-engine = create_engine(
-    SQLALCHEMY_TEST_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 _TEST_PASSWORD = "TestPassword123"
 
 
 @pytest.fixture(scope="function")
 def db_session():
-    """Session DB de test (SQLite en mémoire, recréée pour chaque test)."""
-    Base.metadata.create_all(bind=engine)
-    session = TestingSessionLocal()
+    """Session DB de test — moteur SQLite en mémoire créé par test pour isolation stricte."""
+    _engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=_engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=_engine)()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        Base.metadata.drop_all(bind=_engine)
+        _engine.dispose()
 
 
 @pytest.fixture(scope="function")
