@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useReducer } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -58,6 +58,49 @@ const MONTH_NAMES = [
 ]
 
 const DAY_NAMES = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+
+const inputClass = 'w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent'
+
+interface ModalState {
+  open: boolean
+  editTask: MaintenanceTask | null
+  form: TaskFormData
+  submitting: boolean
+}
+
+const initialModalState: ModalState = {
+  open: false,
+  editTask: null,
+  form: emptyForm,
+  submitting: false,
+}
+
+type ModalAction =
+  | { type: 'OPEN_CREATE' }
+  | { type: 'OPEN_EDIT'; task: MaintenanceTask; form: TaskFormData }
+  | { type: 'CLOSE' }
+  | { type: 'SET_FORM'; form: TaskFormData }
+  | { type: 'SUBMIT_START' }
+  | { type: 'SUBMIT_END' }
+
+function modalReducer(state: ModalState, action: ModalAction): ModalState {
+  switch (action.type) {
+    case 'OPEN_CREATE':
+      return { open: true, editTask: null, form: emptyForm, submitting: false }
+    case 'OPEN_EDIT':
+      return { open: true, editTask: action.task, form: action.form, submitting: false }
+    case 'CLOSE':
+      return { open: false, editTask: null, form: emptyForm, submitting: false }
+    case 'SET_FORM':
+      return { ...state, form: action.form }
+    case 'SUBMIT_START':
+      return { ...state, submitting: true }
+    case 'SUBMIT_END':
+      return { ...state, submitting: false }
+    default:
+      return state
+  }
+}
 
 function computeTasksForMonth(
   tasks: MaintenanceTask[],
@@ -119,14 +162,6 @@ function computeTasksForMonth(
   return result
 }
 
-function getStatusDot(status: 'ok' | 'bientot' | 'en_retard') {
-  switch (status) {
-    case 'ok': return 'bg-green-500'
-    case 'bientot': return 'bg-yellow-400'
-    case 'en_retard': return 'bg-red-500'
-  }
-}
-
 function getStatusBadge(status: 'ok' | 'bientot' | 'en_retard') {
   switch (status) {
     case 'ok': return 'bg-green-900/40 text-green-300 border-green-700'
@@ -156,10 +191,7 @@ export default function CalendarMaintenance() {
 
   // CRUD state
   const [machines, setMachines] = useState<MachineOption[]>([])
-  const [showModal, setShowModal] = useState(false)
-  const [editTask, setEditTask] = useState<MaintenanceTask | null>(null)
-  const [form, setForm] = useState<TaskFormData>(emptyForm)
-  const [formSubmitting, setFormSubmitting] = useState(false)
+  const [modal, dispatchModal] = useReducer(modalReducer, initialModalState)
   const [deleteConfirm, setDeleteConfirm] = useState<MaintenanceTask | null>(null)
 
   const year = currentDate.getFullYear()
@@ -248,33 +280,32 @@ export default function CalendarMaintenance() {
   // --- CRUD handlers ---
 
   const openCreateModal = () => {
-    setEditTask(null)
-    setForm(emptyForm)
-    setShowModal(true)
+    dispatchModal({ type: 'OPEN_CREATE' })
   }
 
   const openEditModal = (task: MaintenanceTask) => {
-    setEditTask(task)
-    setForm({
-      machine_id: String(task.machine_id),
-      titre: task.titre,
-      description: task.description || '',
-      frequence_jours: String(task.frequence_jours),
-      responsable: task.responsable || '',
-      alert_jours: String(task.alert_jours),
-      actif: task.actif,
+    dispatchModal({
+      type: 'OPEN_EDIT',
+      task,
+      form: {
+        machine_id: String(task.machine_id),
+        titre: task.titre,
+        description: task.description || '',
+        frequence_jours: String(task.frequence_jours),
+        responsable: task.responsable || '',
+        alert_jours: String(task.alert_jours),
+        actif: task.actif,
+      },
     })
-    setShowModal(true)
   }
 
   const closeModal = () => {
-    setShowModal(false)
-    setEditTask(null)
-    setForm(emptyForm)
+    dispatchModal({ type: 'CLOSE' })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const { form, editTask } = modal
     if (!form.machine_id || !form.titre.trim()) {
       toast.error('Machine et titre sont requis')
       return
@@ -288,7 +319,7 @@ export default function CalendarMaintenance() {
       alert_jours: Number(form.alert_jours) || 7,
       actif: form.actif,
     }
-    setFormSubmitting(true)
+    dispatchModal({ type: 'SUBMIT_START' })
     try {
       if (editTask) {
         await api.put(`/maintenance-preventive/${editTask.id}`, payload)
@@ -302,7 +333,7 @@ export default function CalendarMaintenance() {
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Erreur lors de l\'enregistrement')
     } finally {
-      setFormSubmitting(false)
+      dispatchModal({ type: 'SUBMIT_END' })
     }
   }
 
@@ -319,6 +350,7 @@ export default function CalendarMaintenance() {
   }
 
   const todayStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+  const { form, editTask, submitting } = modal
 
   if (loading) {
     return (
@@ -634,7 +666,7 @@ export default function CalendarMaintenance() {
       )}
 
       {/* Create / Edit Modal */}
-      {showModal && (
+      {modal.open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/60" onClick={closeModal} />
@@ -656,9 +688,9 @@ export default function CalendarMaintenance() {
                 <label className="block text-sm font-medium text-gray-300 mb-1">Machine *</label>
                 <select
                   value={form.machine_id}
-                  onChange={e => setForm({ ...form, machine_id: e.target.value })}
+                  onChange={e => dispatchModal({ type: 'SET_FORM', form: { ...form, machine_id: e.target.value } })}
                   required
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className={inputClass}
                 >
                   <option value="">-- Sélectionner une machine --</option>
                   {machines.map(m => (
@@ -673,10 +705,10 @@ export default function CalendarMaintenance() {
                 <input
                   type="text"
                   value={form.titre}
-                  onChange={e => setForm({ ...form, titre: e.target.value })}
+                  onChange={e => dispatchModal({ type: 'SET_FORM', form: { ...form, titre: e.target.value } })}
                   required
                   placeholder="Ex: Vérification courroies"
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent placeholder-gray-600"
+                  className={`${inputClass} placeholder-gray-600`}
                 />
               </div>
 
@@ -685,10 +717,10 @@ export default function CalendarMaintenance() {
                 <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
                 <textarea
                   value={form.description}
-                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  onChange={e => dispatchModal({ type: 'SET_FORM', form: { ...form, description: e.target.value } })}
                   rows={3}
                   placeholder="Description de la tâche..."
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent placeholder-gray-600 resize-none"
+                  className={`${inputClass} placeholder-gray-600 resize-none`}
                 />
               </div>
 
@@ -700,8 +732,8 @@ export default function CalendarMaintenance() {
                     type="number"
                     min={1}
                     value={form.frequence_jours}
-                    onChange={e => setForm({ ...form, frequence_jours: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    onChange={e => dispatchModal({ type: 'SET_FORM', form: { ...form, frequence_jours: e.target.value } })}
+                    className={inputClass}
                   />
                 </div>
                 <div>
@@ -710,8 +742,8 @@ export default function CalendarMaintenance() {
                     type="number"
                     min={0}
                     value={form.alert_jours}
-                    onChange={e => setForm({ ...form, alert_jours: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    onChange={e => dispatchModal({ type: 'SET_FORM', form: { ...form, alert_jours: e.target.value } })}
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -722,9 +754,9 @@ export default function CalendarMaintenance() {
                 <input
                   type="text"
                   value={form.responsable}
-                  onChange={e => setForm({ ...form, responsable: e.target.value })}
+                  onChange={e => dispatchModal({ type: 'SET_FORM', form: { ...form, responsable: e.target.value } })}
                   placeholder="Ex: Jean Dupont"
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent placeholder-gray-600"
+                  className={`${inputClass} placeholder-gray-600`}
                 />
               </div>
 
@@ -733,7 +765,7 @@ export default function CalendarMaintenance() {
                 <label className="text-sm font-medium text-gray-300">Tâche active</label>
                 <button
                   type="button"
-                  onClick={() => setForm({ ...form, actif: !form.actif })}
+                  onClick={() => dispatchModal({ type: 'SET_FORM', form: { ...form, actif: !form.actif } })}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.actif ? 'bg-orange-500' : 'bg-gray-600'}`}
                 >
                   <span
@@ -753,10 +785,10 @@ export default function CalendarMaintenance() {
                 </button>
                 <button
                   type="submit"
-                  disabled={formSubmitting}
+                  disabled={submitting}
                   className="px-4 py-2 text-sm font-medium text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {formSubmitting && (
+                  {submitting && (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                   )}
                   {editTask ? 'Enregistrer' : 'Créer la tâche'}

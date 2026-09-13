@@ -119,9 +119,37 @@ Non creusé plus loin (hors périmètre de cette session) ; mérite une investig
 
 ---
 
+### PR #10 — Nettoyage frontend : CalendarMaintenance.tsx + BaseConnaissances.tsx
+Les 3 pistes proposées après inspection (voir ci-dessus) ont été appliquées :
+1. **`inputClass` dans CalendarMaintenance.tsx** — la chaîne Tailwind répétée 6 fois pour les champs
+   du formulaire est maintenant une constante, alignée sur le pattern déjà utilisé dans BaseConnaissances.
+2. **Composant `MediaField` dans BaseConnaissances.tsx** — remplace les 4 blocs `MediaUploader`
+   quasi identiques (cause/solution × éditable/lecture-seule) par un seul composant paramétré
+   (`canEdit`, `label`, `onChange` optionnel).
+3. **Reducer pour l'état modal** dans les deux fichiers — `showModal/editTask/form/formSubmitting`
+   (Calendar) et `modalOpen/editingEntry/form/saving` (BaseConnaissances) sont chacun devenus un seul
+   `useReducer` avec actions explicites (`OPEN_CREATE`, `OPEN_EDIT`, `CLOSE`, `SUBMIT_START/END`),
+   éliminant le risque d'état incohérent (ex. modal ouvert avec `editTask` null pendant une frame).
+   `deleteConfirm`/`deleteConfirmId` restent des `useState` isolés (pas de couplage à réduire).
+- **Bonus** : suppression de `getStatusDot` dans CalendarMaintenance.tsx, fonction morte (jamais
+  appelée) trouvée en cours de nettoyage.
+- **Vérifications** : `tsc --noEmit` clean sur les deux fichiers, `eslint` sans nouvelle erreur/warning
+  introduite (les erreurs listées par `npm run lint` sont toutes préexistantes, dans d'autres fichiers
+  ou sur une ligne non touchée), `npm run build` OK, `npm test` 5/5.
+- **Non vérifié — limite connue** : pas de test dans un navigateur réel. L'environnement de session
+  n'a pas de stack Docker/Postgres configurée (`.env` absent, containers arrêtés), donc impossible de
+  charger ces pages avec de vraies données et de manipuler les modales manuellement. Le serveur Vite
+  démarre sans erreur de compilation, mais ça ne couvre pas le comportement runtime des reducers en
+  interaction réelle (ouverture modal, édition, soumission). À vérifier manuellement avant mise en prod.
+
+**État vérifié :** voir ci-dessus (pas de gate automatisé unique côté frontend au-delà de lint/build/test).
+
+---
+
 ## Prochaine session
 
-Inspection des gros fichiers frontend (`CalendarMaintenance.tsx` 802 lignes, `BaseConnaissances.tsx`
-701 lignes) à arbitrer — jamais ouverts, juste un signal de taille.
 `SchemaInteractif.tsx` (1438 lignes) reste zone interdite sans validation explicite.
-Si la flakiness `test_bt_authorization.py` persiste : creuser la piste contention CPU / hook concurrent.
+Si la flakiness `test_bt_authorization.py` persiste (7 occurrences observées cette session, toutes
+via le hook, jamais en rerun manuel) : creuser la piste contention CPU / hook concurrent.
+Vérifier manuellement dans un navigateur les deux pages retouchées (CalendarMaintenance, BaseConnaissances)
+dès qu'un environnement avec stack complète est disponible.
