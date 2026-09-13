@@ -32,6 +32,8 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+_TEST_PASSWORD = "TestPassword123"
+
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -61,111 +63,76 @@ def client(db_session):
 
 
 @pytest.fixture
-def admin_user(db_session):
-    """Crée un utilisateur admin de test."""
-    user = User(
-        username="admin_test",
-        email="admin@test.com",
-        hashed_password=get_password_hash("TestPassword123"),
-        role="admin",
-        is_active=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+def make_user(db_session):
+    """Factory : crée un utilisateur avec le rôle donné.
+
+    Usage : user = make_user("admin")  ou  make_user("technicien", username="bob")
+    """
+
+    def _make(role: str, username: str | None = None) -> User:
+        _username = username or f"{role}_test"
+        user = User(
+            username=_username,
+            email=f"{_username}@test.com",
+            hashed_password=get_password_hash(_TEST_PASSWORD),
+            role=role,
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+        return user
+
+    return _make
 
 
 @pytest.fixture
-def tech_user(db_session):
-    """Crée un utilisateur technicien de test."""
-    user = User(
-        username="tech_test",
-        email="tech@test.com",
-        hashed_password=get_password_hash("TestPassword123"),
-        role="technicien",
-        is_active=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+def admin_user(make_user):
+    return make_user("admin", username="admin_test")
 
 
 @pytest.fixture
-def lecteur_user(db_session):
-    """Crée un utilisateur lecteur (lecture seule) de test."""
-    user = User(
-        username="lecteur_test",
-        email="lecteur@test.com",
-        hashed_password=get_password_hash("TestPassword123"),
-        role="lecteur",
-        is_active=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+def tech_user(make_user):
+    return make_user("technicien", username="tech_test")
 
 
 @pytest.fixture
-def chef_equipe_user(db_session):
-    """Crée un utilisateur chef d'équipe de test."""
-    user = User(
-        username="chef_test",
-        email="chef@test.com",
-        hashed_password=get_password_hash("TestPassword123"),
-        role="chef_equipe",
-        is_active=True,
+def lecteur_user(make_user):
+    return make_user("lecteur", username="lecteur_test")
+
+
+@pytest.fixture
+def chef_equipe_user(make_user):
+    return make_user("chef_equipe", username="chef_test")
+
+
+def _login(client, username: str) -> str:
+    response = client.post(
+        "/api/auth/login",
+        data={"username": username, "password": _TEST_PASSWORD},
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+    assert response.status_code == 200, f"Login failed: {response.text}"
+    return response.json()["access_token"]
 
 
 @pytest.fixture
 def admin_token(client, admin_user):
-    """Récupère un token admin."""
-    response = client.post(
-        "/api/auth/login",
-        data={"username": "admin_test", "password": "TestPassword123"},
-    )
-    assert response.status_code == 200, f"Login failed: {response.text}"
-    return response.json()["access_token"]
+    return _login(client, admin_user.username)
 
 
 @pytest.fixture
 def tech_token(client, tech_user):
-    """Récupère un token technicien."""
-    response = client.post(
-        "/api/auth/login",
-        data={"username": "tech_test", "password": "TestPassword123"},
-    )
-    assert response.status_code == 200, f"Login failed: {response.text}"
-    return response.json()["access_token"]
+    return _login(client, tech_user.username)
 
 
 @pytest.fixture
 def lecteur_token(client, lecteur_user):
-    """Récupère un token lecteur."""
-    response = client.post(
-        "/api/auth/login",
-        data={"username": "lecteur_test", "password": "TestPassword123"},
-    )
-    assert response.status_code == 200, f"Login failed: {response.text}"
-    return response.json()["access_token"]
+    return _login(client, lecteur_user.username)
 
 
 @pytest.fixture
 def chef_equipe_token(client, chef_equipe_user):
-    """Récupère un token chef d'équipe."""
-    response = client.post(
-        "/api/auth/login",
-        data={"username": "chef_test", "password": "TestPassword123"},
-    )
-    assert response.status_code == 200, f"Login failed: {response.text}"
-    return response.json()["access_token"]
+    return _login(client, chef_equipe_user.username)
 
 
 def auth_headers(token: str) -> dict:

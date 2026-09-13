@@ -311,6 +311,7 @@ def get_chat(
         try:
             messages = json.loads(panne.description[6:])
         except (json.JSONDecodeError, ValueError):
+            log.warning("chat_parse_error", panne_id=panne_id)
             messages = []
     return {"messages": messages}
 
@@ -335,6 +336,7 @@ def post_chat(
         try:
             messages = json.loads(panne.description[6:])
         except (json.JSONDecodeError, ValueError):
+            log.warning("chat_parse_error", panne_id=panne_id)
             messages = []
 
     # Ajouter le nouveau message
