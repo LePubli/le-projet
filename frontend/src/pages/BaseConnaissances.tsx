@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useReducer } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -53,6 +53,62 @@ const CRITICITE_CONFIG: Record<number, { label: string; color: string; bg: strin
   5: { label: 'Critique', color: 'text-red-400', bg: 'bg-red-900/30 border-red-800/50' },
 }
 
+// ─── Modal state (create/edit) ──────────────────────────────────────
+interface ModalState {
+  open: boolean
+  editingEntry: KnowledgeEntry | null
+  form: FormData
+  saving: boolean
+}
+
+const initialModalState: ModalState = {
+  open: false,
+  editingEntry: null,
+  form: EMPTY_FORM,
+  saving: false,
+}
+
+type ModalAction =
+  | { type: 'OPEN_CREATE' }
+  | { type: 'OPEN_EDIT'; entry: KnowledgeEntry; form: FormData }
+  | { type: 'CLOSE' }
+  | { type: 'UPDATE_FORM'; updater: (f: FormData) => FormData }
+  | { type: 'SAVE_START' }
+  | { type: 'SAVE_END' }
+
+function modalReducer(state: ModalState, action: ModalAction): ModalState {
+  switch (action.type) {
+    case 'OPEN_CREATE':
+      return { open: true, editingEntry: null, form: EMPTY_FORM, saving: false }
+    case 'OPEN_EDIT':
+      return { open: true, editingEntry: action.entry, form: action.form, saving: false }
+    case 'CLOSE':
+      return { open: false, editingEntry: null, form: EMPTY_FORM, saving: false }
+    case 'UPDATE_FORM':
+      return { ...state, form: action.updater(state.form) }
+    case 'SAVE_START':
+      return { ...state, saving: true }
+    case 'SAVE_END':
+      return { ...state, saving: false }
+    default:
+      return state
+  }
+}
+
+// ─── Media field (lecture seule ou éditable) ────────────────────────
+function MediaField({
+  medias, canEdit, label, onChange,
+}: {
+  medias: MediaItem[]
+  canEdit: boolean
+  label: string
+  onChange?: (m: MediaItem[]) => void
+}) {
+  if (!canEdit && medias.length === 0) return null
+  const uploader = <MediaUploader medias={medias} canEdit={canEdit} label={label} size="sm" onChange={onChange} />
+  return canEdit ? <div className="mt-2">{uploader}</div> : uploader
+}
+
 export default function BaseConnaissances() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -71,10 +127,8 @@ export default function BaseConnaissances() {
   const [showFilters, setShowFilters] = useState(false)
 
   // ─── Modal state ────────────────────────────────────────────────
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingEntry, setEditingEntry] = useState<KnowledgeEntry | null>(null)
-  const [form, setForm] = useState<FormData>(EMPTY_FORM)
-  const [saving, setSaving] = useState(false)
+  const [modal, dispatchModal] = useReducer(modalReducer, initialModalState)
+  const { open: modalOpen, editingEntry, form, saving } = modal
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
   // ─── Fetch ──────────────────────────────────────────────────────
@@ -129,33 +183,31 @@ export default function BaseConnaissances() {
 
   // ─── Modal helpers ──────────────────────────────────────────────
   const openCreate = () => {
-    setEditingEntry(null)
-    setForm(EMPTY_FORM)
-    setModalOpen(true)
+    dispatchModal({ type: 'OPEN_CREATE' })
   }
 
   const openEdit = (entry: KnowledgeEntry) => {
-    setEditingEntry(entry)
-    setForm({
-      machine_id: String(entry.machine_id),
-      titre: entry.titre,
-      description: entry.description || '',
-      criticite: String(entry.criticite),
-      causes_possibles: (entry.causes_possibles || []).join(', '),
-      cause_reelle: entry.cause_reelle || '',
-      solution: entry.solution || '',
-      protocole_reparation: entry.protocole_reparation || '',
-      temps_moyen_reparation: entry.temps_moyen_reparation != null ? String(entry.temps_moyen_reparation) : '',
-      cause_medias: entry.cause_medias || [],
-      solution_medias: entry.solution_medias || [],
+    dispatchModal({
+      type: 'OPEN_EDIT',
+      entry,
+      form: {
+        machine_id: String(entry.machine_id),
+        titre: entry.titre,
+        description: entry.description || '',
+        criticite: String(entry.criticite),
+        causes_possibles: (entry.causes_possibles || []).join(', '),
+        cause_reelle: entry.cause_reelle || '',
+        solution: entry.solution || '',
+        protocole_reparation: entry.protocole_reparation || '',
+        temps_moyen_reparation: entry.temps_moyen_reparation != null ? String(entry.temps_moyen_reparation) : '',
+        cause_medias: entry.cause_medias || [],
+        solution_medias: entry.solution_medias || [],
+      },
     })
-    setModalOpen(true)
   }
 
   const closeModal = () => {
-    setModalOpen(false)
-    setEditingEntry(null)
-    setForm(EMPTY_FORM)
+    dispatchModal({ type: 'CLOSE' })
   }
 
   const handleSave = async () => {
@@ -164,7 +216,7 @@ export default function BaseConnaissances() {
       return
     }
 
-    setSaving(true)
+    dispatchModal({ type: 'SAVE_START' })
     try {
       const causesArray = form.causes_possibles
         ? form.causes_possibles.split(',').map(c => c.trim()).filter(Boolean)
@@ -208,7 +260,7 @@ export default function BaseConnaissances() {
       const message = err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement'
       toast.error(message)
     } finally {
-      setSaving(false)
+      dispatchModal({ type: 'SAVE_END' })
     }
   }
 
@@ -423,9 +475,7 @@ export default function BaseConnaissances() {
                             </p>
                           </div>
                         )}
-                        {entry.cause_medias && entry.cause_medias.length > 0 && (
-                          <MediaUploader medias={entry.cause_medias} canEdit={false} label="Médias de la cause" size="sm" />
-                        )}
+                        <MediaField medias={entry.cause_medias || []} canEdit={false} label="Médias de la cause" />
                       </div>
 
                       {/* Solution */}
@@ -440,9 +490,7 @@ export default function BaseConnaissances() {
                         ) : (
                           <p className="text-xs text-gray-600 italic">Aucune solution documentée</p>
                         )}
-                        {entry.solution_medias && entry.solution_medias.length > 0 && (
-                          <MediaUploader medias={entry.solution_medias} canEdit={false} label="Médias de la solution" size="sm" />
-                        )}
+                        <MediaField medias={entry.solution_medias || []} canEdit={false} label="Médias de la solution" />
                       </div>
                     </div>
 
@@ -559,7 +607,7 @@ export default function BaseConnaissances() {
                   <label className={labelClass}>Machine <span className="text-red-400">*</span></label>
                   <select
                     value={form.machine_id}
-                    onChange={e => setForm(f => ({ ...f, machine_id: e.target.value }))}
+                    onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, machine_id: e.target.value }) })}
                     className={inputClass}
                     disabled={!!editingEntry}
                   >
@@ -573,7 +621,7 @@ export default function BaseConnaissances() {
                   <label className={labelClass}>Criticité</label>
                   <select
                     value={form.criticite}
-                    onChange={e => setForm(f => ({ ...f, criticite: e.target.value }))}
+                    onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, criticite: e.target.value }) })}
                     className={inputClass}
                   >
                     {[1, 2, 3, 4, 5].map(v => (
@@ -589,7 +637,7 @@ export default function BaseConnaissances() {
                 <input
                   type="text"
                   value={form.titre}
-                  onChange={e => setForm(f => ({ ...f, titre: e.target.value }))}
+                  onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, titre: e.target.value }) })}
                   className={inputClass}
                   placeholder="Titre de la panne / connaissance"
                 />
@@ -600,7 +648,7 @@ export default function BaseConnaissances() {
                 <label className={labelClass}>Description</label>
                 <textarea
                   value={form.description}
-                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, description: e.target.value }) })}
                   className={`${inputClass} min-h-[80px] resize-y`}
                   placeholder="Description détaillée du problème..."
                 />
@@ -612,7 +660,7 @@ export default function BaseConnaissances() {
                 <input
                   type="text"
                   value={form.causes_possibles}
-                  onChange={e => setForm(f => ({ ...f, causes_possibles: e.target.value }))}
+                  onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, causes_possibles: e.target.value }) })}
                   className={inputClass}
                   placeholder="Usure roulement, manque de lubrifiant, surchauffe..."
                 />
@@ -623,19 +671,16 @@ export default function BaseConnaissances() {
                 <label className={labelClass}>Cause réelle <span className="text-red-400">*</span></label>
                 <textarea
                   value={form.cause_reelle}
-                  onChange={e => setForm(f => ({ ...f, cause_reelle: e.target.value }))}
+                  onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, cause_reelle: e.target.value }) })}
                   className={`${inputClass} min-h-[80px] resize-y`}
                   placeholder="Cause identifiée après diagnostic..."
                 />
-                <div className="mt-2">
-                  <MediaUploader
-                    medias={form.cause_medias}
-                    onChange={(m) => setForm(f => ({ ...f, cause_medias: m }))}
-                    canEdit={true}
-                    label="Médias de la cause (photos / vidéos)"
-                    size="sm"
-                  />
-                </div>
+                <MediaField
+                  medias={form.cause_medias}
+                  canEdit={true}
+                  label="Médias de la cause (photos / vidéos)"
+                  onChange={(m) => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, cause_medias: m }) })}
+                />
               </div>
 
               {/* Solution */}
@@ -643,19 +688,16 @@ export default function BaseConnaissances() {
                 <label className={labelClass}>Solution <span className="text-red-400">*</span></label>
                 <textarea
                   value={form.solution}
-                  onChange={e => setForm(f => ({ ...f, solution: e.target.value }))}
+                  onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, solution: e.target.value }) })}
                   className={`${inputClass} min-h-[100px] resize-y`}
                   placeholder="Solution appliquée pour résoudre le problème..."
                 />
-                <div className="mt-2">
-                  <MediaUploader
-                    medias={form.solution_medias}
-                    onChange={(m) => setForm(f => ({ ...f, solution_medias: m }))}
-                    canEdit={true}
-                    label="Médias de la solution (photos / vidéos)"
-                    size="sm"
-                  />
-                </div>
+                <MediaField
+                  medias={form.solution_medias}
+                  canEdit={true}
+                  label="Médias de la solution (photos / vidéos)"
+                  onChange={(m) => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, solution_medias: m }) })}
+                />
               </div>
 
               {/* Protocole de réparation */}
@@ -663,7 +705,7 @@ export default function BaseConnaissances() {
                 <label className={labelClass}>Protocole de réparation</label>
                 <textarea
                   value={form.protocole_reparation}
-                  onChange={e => setForm(f => ({ ...f, protocole_reparation: e.target.value }))}
+                  onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, protocole_reparation: e.target.value }) })}
                   className={`${inputClass} min-h-[100px] resize-y`}
                   placeholder="1. Éteindre la machine&#10;2. Démonter le capot&#10;3. Remplacer la pièce..."
                 />
@@ -676,7 +718,7 @@ export default function BaseConnaissances() {
                   type="number"
                   min="0"
                   value={form.temps_moyen_reparation}
-                  onChange={e => setForm(f => ({ ...f, temps_moyen_reparation: e.target.value }))}
+                  onChange={e => dispatchModal({ type: 'UPDATE_FORM', updater: f => ({ ...f, temps_moyen_reparation: e.target.value }) })}
                   className={inputClass}
                   placeholder="30"
                 />
