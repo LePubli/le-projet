@@ -25,27 +25,9 @@ from app.core.security import (
     require_signatory_role,
 )
 from app.core.activity import log_activity, apply_update_and_log
+from app.services import bon_travail as svc_bt
 
 router = APIRouter(prefix="/api/bons-travail", tags=["bons-travail"])
-
-
-def _generate_numero(db: Session, type_bt: str) -> str:
-    """Génère un numéro de BT auto-incrémenté : BT-ENT-0001 ou BT-NET-0001"""
-    prefix = "ENT" if type_bt == "entretien" else "NET"
-    last = (
-        db.query(BonTravail)
-        .filter(BonTravail.numero.like(f"BT-{prefix}-%"))
-        .order_by(BonTravail.id.desc())
-        .first()
-    )
-    if last and last.numero:
-        try:
-            num = int(last.numero.split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            num = 1
-    else:
-        num = 1
-    return f"BT-{prefix}-{num:04d}"
 
 
 def _bt_to_list_item(bt: BonTravail) -> dict:
@@ -164,76 +146,8 @@ def create_bon_travail(
 ):
     if bt_in.type_bt not in ("entretien", "nettoyage"):
         raise HTTPException(status_code=400, detail="type_bt doit être 'entretien' ou 'nettoyage'")
-
-    # Générer le numéro
-    numero = _generate_numero(db, bt_in.type_bt)
-
-    # Construire l'arborescence si machine fournie
-    arborescence = None
-    if bt_in.machine_id:
-        from app.models.machine import Machine
-
-        machine = db.query(Machine).filter(Machine.id == bt_in.machine_id).first()
-        if machine:
-            parts = []
-            if machine.zone:
-                parts.append(f"Z-{machine.zone}")
-            if machine.ligne:
-                parts.append(machine.ligne)
-            parts.append(f"{machine.code_interne or machine.nom}")
-            arborescence = " > ".join(parts)
-
-    bt = BonTravail(
-        numero=numero,
-        type_bt=bt_in.type_bt,
-        titre=bt_in.titre,
-        description=bt_in.description,
-        machine_id=bt_in.machine_id,
-        arborescence=arborescence,
-        date_debut_prevue=bt_in.date_debut_prevue,
-        date_fin_prevue=bt_in.date_fin_prevue,
-        degre_urgence=bt_in.degre_urgence,
-        famille=bt_in.famille,
-        calendrier_id=bt_in.calendrier_id,
-        demandeur_id=bt_in.demandeur_id or current_user.id,
-        cause_medias=[m.model_dump() for m in bt_in.cause_medias] if bt_in.cause_medias else [],
-        solution_medias=(
-            [m.model_dump() for m in bt_in.solution_medias] if bt_in.solution_medias else []
-        ),
-    )
-    db.add(bt)
-
-    # Gammes
-    for g in bt_in.gammes:
-        db.add(
-            BTGamme(
-                bt=bt,
-                ordre=g.ordre,
-                code_gamme=g.code_gamme,
-                famille_gamme=g.famille_gamme,
-                texte_gamme=g.texte_gamme,
-                consignation=g.consignation,
-                condamnation=g.condamnation,
-                duree_estimee_h=g.duree_estimee_h,
-            )
-        )
-
-    # Compteurs
-    for c in bt_in.compteurs:
-        db.add(
-            BTCompteur(
-                bt=bt,
-                nom_compteur=c.nom_compteur,
-                valeur=c.valeur,
-                cumul=c.cumul,
-                releve=c.releve,
-                val_courante=c.val_courante,
-            )
-        )
-
-    db.commit()
-    db.refresh(bt)
-    log_activity(db, current_user, "créé", "bon_travail", bt.id, f"{numero} - {bt.titre}")
+    bt = svc_bt.create_bt(db, bt_in, current_user.id)
+    log_activity(db, current_user, "créé", "bon_travail", bt.id, f"{bt.numero} - {bt.titre}")
     return bt
 
 
@@ -348,8 +262,7 @@ def add_piece(
     cout_ligne = (p_in.cout_unitaire or 0) * (p_in.quantite or 1)
     p = BTPiece(bt_id=bt_id, cout_ligne=cout_ligne, **p_in.model_dump())
     db.add(p)
-    # Recalculer coût total
-    bt.cout_total = sum((pp.cout_ligne or 0) for pp in bt.pieces) + cout_ligne
+    bt.cout_total = svc_bt.recalculate_cout_total(bt) + cout_ligne
     db.commit()
     db.refresh(p)
     return p
@@ -368,7 +281,7 @@ def delete_piece(
     db.delete(p)
     bt = db.query(BonTravail).filter(BonTravail.id == bt_id).first()
     if bt:
-        bt.cout_total = sum((pp.cout_ligne or 0) for pp in bt.pieces)
+        bt.cout_total = svc_bt.recalculate_cout_total(bt)
     db.commit()
     return {"ok": True}
 
