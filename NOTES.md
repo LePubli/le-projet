@@ -98,8 +98,30 @@ de l'échec (aucune instrumentation ajoutée au code — coût nul tant que ça 
 
 ---
 
+### PR #9 — Couche service pour `extra.py`
+- `app/api/extra.py` (421 → 230 lignes) regroupait 5 fonctionnalités non liées (email, alertes stock,
+  export xlsx, chat, signature électronique) : logique métier extraite dans `app/services/extra.py`
+  (256 lignes), endpoints ne gardent que HTTP/dépendances/formatage.
+- `notify_panne_critique_email` déplacée depuis `app/api/extra.py` — mise à jour de l'unique appelant
+  externe (`services/panne_service.py:62`, vérifié par recherche exhaustive avant la migration).
+- **Bug corrigé en passant** : l'export xlsx `machines` utilisait un `__import__("app.models.machine", ...)`
+  dynamique gardé par un `if False` mort (contournement historique d'un import circulaire qui ne semble
+  plus exister) — remplacé par un import normal dans le service.
+- Gate : `flake8`/`black` clean, `pytest` 68/68.
+
+### Flakiness `test_bt_authorization.py` — 3 nouvelles occurrences (401, KeyError x2), toujours non résolue
+Trois échecs de plus observés pendant cette session (tests différents à chaque fois : signature,
+compteur, pièce), tous **uniquement via le hook post-édition** (jamais sur un rerun manuel juste après,
+ni en lançant `test_bt_authorization.py` seul — 16/16 systématiquement). Piste non explorée : le hook
+déclenche pytest immédiatement après chaque edit, potentiellement pendant qu'un agent en tâche de fond
+tourne encore (contention CPU) — cohérent avec le fait que ça ne reproduit jamais en manuel isolé.
+Non creusé plus loin (hors périmètre de cette session) ; mérite une investigation dédiée si ça persiste.
+
+---
+
 ## Prochaine session
 
-Piste #2 restante (extraction service pour `extra.py`, 421 lignes) et inspection des gros fichiers
-frontend (`CalendarMaintenance.tsx`, `BaseConnaissances.tsx`) à arbitrer.
+Inspection des gros fichiers frontend (`CalendarMaintenance.tsx` 802 lignes, `BaseConnaissances.tsx`
+701 lignes) à arbitrer — jamais ouverts, juste un signal de taille.
 `SchemaInteractif.tsx` (1438 lignes) reste zone interdite sans validation explicite.
+Si la flakiness `test_bt_authorization.py` persiste : creuser la piste contention CPU / hook concurrent.
