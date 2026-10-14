@@ -11,7 +11,11 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
   `BACKEND_HOST_HEADER` au démarrage du conteneur (défaut : `http://backend:8000`,
   comportement inchangé avec le docker-compose). Permet de déployer frontend et
   backend séparément.
-- `docker-compose.yml` : ajout de `build:` pour le développement local.
+- `docker-compose.yml` déplacé vers `local/docker-compose.yml` (ajout de `build:`
+  pour le développement local) : à la racine, DockPanel Git Deploy le détectait et
+  déployait une pile Compose avec son propre Postgres sur le volume de production
+  au lieu de construire le Dockerfile du service. Le `Makefile` utilise
+  `-f local/docker-compose.yml --project-directory .`.
 - `backend/entrypoint.sh` : suppression du bloc de réparation d'anciens
   identifiants de révision Alembic (base de production en `0021`).
 

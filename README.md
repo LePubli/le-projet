@@ -28,7 +28,7 @@ PostgreSQL 16 (conteneur `trimaint_db`, volume `trimaint_postgres_data`)
   démarrage du conteneur : `BACKEND_UPSTREAM` (adresse du backend) et
   `BACKEND_HOST_HEADER` (nom de domaine du backend, utilisé par le vhost nginx
   de l'hôte pour router la requête). Sans ces variables, l'image vise
-  `http://backend:8000`, ce qui correspond au `docker-compose.yml`.
+  `http://backend:8000`, ce qui correspond à `local/docker-compose.yml`.
 - **Backend** : aucune adaptation nécessaire. Au démarrage il attend la base,
   applique `alembic upgrade head`, puis lance gunicorn.
 - **Base** : sur une base vierge, les 21 migrations (0001 → 0021) passent sans
@@ -371,6 +371,12 @@ Vérifié : 8 tentatives consécutives → 5× 200 puis 429 sans `TEST_MODE` ;
 Un modèle sans secret, `.env.example`, est maintenant versionné à la racine.
 
 ## Dépannage
+
+**DockPanel déploie une pile Compose (conteneurs `dockpanel-compose-…`, un 2e Postgres) au lieu du Dockerfile**
+Un `docker-compose.yml` (ou `compose.yml`) à la **racine** du dépôt fait basculer
+Git Deploy en mode Compose. Le fichier de développement est donc rangé dans
+`local/docker-compose.yml` : ne pas le remettre à la racine. Symptôme dans les
+logs de l'agent DockPanel : `Git deploy (compose) success`.
 
 **Le frontend ne démarre pas : `host not found in upstream`**
 Le nom de `BACKEND_UPSTREAM` ne se résout pas depuis le conteneur. Vérifier

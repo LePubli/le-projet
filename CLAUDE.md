@@ -11,7 +11,7 @@ encadrement. Priorité actuelle : réduire complexité et duplication
 
 | Action | Commande |
 |---|---|
-| Backend dev | `docker compose up -d` puis `make migrate` |
+| Backend dev | `make build && make up` puis `make migrate` |
 | Backend test | `cd backend && pytest -v` |
 | Backend lint | `cd backend && flake8 app tests && black --check app tests` (mypy hors gate, volontaire) |
 | Frontend dev | `cd frontend && npm run dev` |
@@ -35,8 +35,9 @@ encadrement. Priorité actuelle : réduire complexité et duplication
   Alembic appliquée = jamais modifiée, on corrige en avant.
 - Production : un Git Deploy DockPanel par service (`backend/`, `frontend/`),
   voir README. Le frontend lit `BACKEND_UPSTREAM` / `BACKEND_HOST_HEADER`
-  (`frontend/nginx.conf.template`). `docker-compose.yml` = pile complète avec
-  `build:` pour le développement local.
+  (`frontend/nginx.conf.template`). `local/docker-compose.yml` = pile complète
+  pour le développement local (rangé hors racine : **un `docker-compose.yml` à
+  la racine fait basculer DockPanel Git Deploy en mode Compose**).
 
 **Conventions** : français partout — code, commentaires, commits, termes
 métier (`panne`, `bon_travail`, `chef_equipe`...).
