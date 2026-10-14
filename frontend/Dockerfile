@@ -54,7 +54,11 @@ RUN test -f dist/index.html || (echo "ERREUR: le build Vite n'a pas produit dist
 FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Modèle nginx : les variables ${BACKEND_*} sont remplacées au démarrage du conteneur
+# (voir l'en-tête de nginx.conf.template). Valeurs par défaut = stack docker-compose.
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV BACKEND_UPSTREAM=http://backend:8000
+ENV BACKEND_HOST_HEADER=\$host
 
 EXPOSE 80
 

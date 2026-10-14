@@ -1,0 +1,5 @@
+Fichiers à SUPPRIMER du dépôt (après avoir copié les autres par-dessus) :
+
+  frontend/nginx.conf                      (remplacé par frontend/nginx.conf.template)
+  prepare-trimaint.sh
+  migrations/                              (dossier entier, 5 fichiers .sql)

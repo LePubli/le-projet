@@ -30,36 +30,6 @@ done
 
 echo "PostgreSQL prêt."
 
-# Fix stale alembic_version if DB was partially upgraded with old revision IDs.
-# The project changed its revision-ID convention twice:
-#   - up to 0005: numeric IDs ("0004", "0005")
-#   - 0006 onwards: full names ("0006_constraints_cascade", "0010_bons_travail", ...)
-#   - 0011/0012: short numeric IDs again ("0011", "0012") to keep the chain
-#     consistent with 0001-0005.
-# If a DB recorded a revision ID that no longer exists in the migrations folder
-# (e.g. "0011_taille_pastille_float" from a previous broken deploy), Alembic
-# raises KeyError. We patch alembic_version to the closest valid upstream ID.
-python -c "
-import psycopg2, os
-conn = psycopg2.connect(os.environ['DATABASE_URL'])
-cur = conn.cursor()
-cur.execute('SELECT version_num FROM alembic_version')
-row = cur.fetchone()
-if row:
-    v = row[0]
-    fixes = {
-        '0006': '0006_constraints_cascade',
-        '0011_taille_pastille_float': '0011',
-        '0012_panne_medias': '0012',
-    }
-    if v in fixes:
-        cur.execute('UPDATE alembic_version SET version_num = %s', (fixes[v],))
-        conn.commit()
-        print(f'Fixed alembic_version: {v} -> {fixes[v]}')
-cur.close()
-conn.close()
-" 2>/dev/null || true
-
 echo "Exécution des migrations Alembic..."
 alembic upgrade head
 echo "Migrations terminées."

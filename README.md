@@ -1,218 +1,192 @@
-# TriMaint — déploiement sur DockPanel
+# TriMaint — déploiement sur DockPanel (Git Deploy)
 
-Stack unique prête à coller dans DockPanel, avec restauration de la base de
-production issue de Coolify.
+Chaque service est déployé séparément depuis ce dépôt GitHub, avec mise à jour
+automatique à chaque `git push` sur la branche `master`.
 
 ---
 
-## Pourquoi cette approche
+## Architecture
 
-Le `docker-compose.yml` du repo est écrit pour **Coolify + Traefik**. Deux
-adaptations étaient nécessaires :
+```
+Internet
+   │  https://triselec.le-publicitaire.fr                 https://api-triselec.le-publicitaire.fr
+   ▼                                                                   ▲
+nginx de l'hôte (DockPanel, TLS Let's Encrypt)                          │
+   │                                                                   │
+   ▼                                                                   │
+trimaint-web   (Git Deploy, Build Context = frontend, port 80)         │
+   sert la SPA React ; relaie /api/, /docs, /redoc ───────────────────┘
+                                                      │
+trimaint-api   (Git Deploy, Build Context = backend, port 8000)  ◄──────┘
+   FastAPI + gunicorn ; migrations Alembic au démarrage ; sauvegarde nocturne
+   │
+   ▼
+PostgreSQL 16 (conteneur `trimaint_db`, volume `trimaint_postgres_data`)
+```
 
-| Point | Coolify | DockPanel |
-|---|---|---|
-| Routage | Traefik rejoint le réseau Docker, `expose` suffit | nginx sur l'hôte, il faut un port **publié** |
-| Build | Coolify build depuis les sources | Images construites une fois, référencées par tag |
+- **Frontend** : le modèle `frontend/nginx.conf.template` lit deux variables au
+  démarrage du conteneur : `BACKEND_UPSTREAM` (adresse du backend) et
+  `BACKEND_HOST_HEADER` (nom de domaine du backend, utilisé par le vhost nginx
+  de l'hôte pour router la requête). Sans ces variables, l'image vise
+  `http://backend:8000`, ce qui correspond au `docker-compose.yml`.
+- **Backend** : aucune adaptation nécessaire. Au démarrage il attend la base,
+  applique `alembic upgrade head`, puis lance gunicorn.
+- **Base** : sur une base vierge, les 21 migrations (0001 → 0021) passent sans
+  erreur (testé le 2026-10-14) ; sur la base de production, déjà en `0021`,
+  `upgrade head` ne fait rien.
 
-Et surtout : **on restaure le dump de production au lieu de rejouer les
-migrations**.
-
-### Pourquoi c'est important
-
-Tenter `alembic upgrade head` sur une base vierge échoue, pour deux raisons
-présentes dans le code :
-
-1. **`entrypoint.sh`** patche la table `machines` (colonne `rotation`) **avant**
-   d'exécuter les migrations. Avec `set -e` actif, le script meurt sur une base
-   vierge où la table n'existe pas encore.
-2. **Migration `0011_taille_pastille_float`** fait un `UPDATE` sur la colonne
-   `taille_pastille`, qui **n'est créée par aucune migration** — elle a été
-   ajoutée manuellement en production sur l'ancien serveur.
-
-Ces deux colonnes existent déjà dans le dump. Une fois la base restaurée,
-`alembic upgrade head` est un no-op (la base est à la révision `0018`, comme le
-code), et le bloc `rotation` trouve sa colonne. Aucun bug déclenché.
-
-> **À corriger dans le repo à terme.** Tant que ces deux points ne sont pas
-> réglés, le projet n'est pas déployable from scratch — seulement restaurable
-> depuis un dump. Ça bloquera le jour où tu voudras une base de dev vierge ou
-> un déploiement chez un autre client. Voir la section « Dette technique ».
+> Un Git Deploy **remplace le conteneur à chaque déploiement** : tout ce que
+> l'application écrit sur son propre système de fichiers est perdu. Les
+> fichiers téléversés (`/data/uploads`) et les sauvegardes (`/data/backups`)
+> doivent donc être déclarés dans **Persistent Volumes**.
 
 ---
 
 ## Prérequis
 
-- VPS avec Docker et DockPanel installés
-- Les sources du projet (dossier `TriMaint-main`)
-- Le dump `trimaint.sql` (284 Ko, révision Alembic `0018`)
-- ~3 Go d'espace libre pour les images
-
-Le fichier `trimaint-roles.sql` n'est **pas** nécessaire : le rôle `trimaint`
-est créé automatiquement par le conteneur Postgres via `POSTGRES_USER`.
+- DockPanel, Docker, et ce dépôt accessible depuis le VPS (il est public).
+- Un enregistrement DNS `A` pour le domaine du backend :
+  `api-triselec.le-publicitaire.fr` → `82.22.77.159`.
+- La base PostgreSQL de TriMaint (conteneur `trimaint_db`) toujours en marche et
+  joignable depuis un conteneur Git Deploy (voir « Accès à la base »).
+- Une sauvegarde fraîche de la base **avant** toute bascule.
 
 ---
 
-## Installation
+## Déploiement
 
-### 1. Transférer les fichiers sur le VPS
+### 1. Backend — `trimaint-api`
 
-Depuis ton PC (PowerShell) :
-
-```powershell
-scp -r C:\Users\agenc\Downloads\TriMaint-main root@82.22.77.159:/root/apps/
-scp C:\Users\agenc\Downloads\trimaint.sql root@82.22.77.159:/root/apps/
-scp -r C:\Users\agenc\Downloads\trimaint-deploy root@82.22.77.159:/root/
-```
-
-### 2. Lancer la préparation
-
-```bash
-ssh root@82.22.77.159
-cd /root/trimaint-deploy
-chmod +x prepare-trimaint.sh
-sudo bash prepare-trimaint.sh /root/apps/TriMaint-main /root/apps/trimaint.sql
-```
-
-Le script :
-1. nettoie les conteneurs et volumes des tentatives précédentes
-2. construit `trimaint-backend:prod` et `trimaint-frontend:prod`
-3. génère un `.env` avec de vrais secrets
-4. démarre Postgres seul et restaure le dump
-5. vérifie l'intégrité (22 tables, colonnes critiques, comptages)
-6. démarre la stack complète
-
-⏱️ Compter 5 à 10 minutes, essentiellement le build npm du frontend.
-
-### 3. Déployer dans DockPanel
-
-**Docker Apps → Deploy Custom Stack**
-
-Coller le contenu de :
-```bash
-cat /root/apps/trimaint-prod/docker-compose.yml
-```
-
-**Variables d'environnement** — bouton « Paste .env », coller :
-```bash
-cat /root/apps/trimaint-prod/.env
-```
-
-### 4. Attacher le domaine
-
-Vérifier le DNS d'abord :
-```bash
-dig +short triselec.le-publicitaire.fr @8.8.8.8
-```
-Doit retourner `82.22.77.159`. Sinon, créer l'enregistrement A chez le
-registrar avant de continuer.
-
-Puis **Sites → New Site → Reverse Proxy** :
+**Git Deploy → New Deploy** (le conteneur s'appellera `dockpanel-git-trimaint-api`)
 
 | Champ | Valeur |
 |---|---|
-| Domaine | `triselec.le-publicitaire.fr` |
-| Cible | `127.0.0.1:7001` |
-| SSL | Let's Encrypt activé |
+| Name | `trimaint-api` |
+| Repository URL | `https://github.com/LePubli/le-projet.git` |
+| Branch | `master` |
+| Dockerfile Path | `Dockerfile` |
+| Build Context | `backend` |
+| Container Port | `8000` |
+| Domain | `api-triselec.le-publicitaire.fr` |
+| Persistent Volumes | `/data/uploads` et `/data/backups` |
+| Auto-deploy on push | coché (une fois la bascule validée) |
 
-> ⚠️ Attention à l'orthographe : une tentative précédente a créé un vhost
-> `triselec.le-publicitiare.fr` (i/a inversés). Si ce fichier traîne encore :
-> ```bash
-> rm -f /etc/nginx/sites-enabled/triselec.le-publicitiare.fr.conf
-> nginx -t && systemctl reload nginx
-> ```
+**Environment Variables** : « Paste .env », avec le contenu de `.env.example`
+rempli (`SECRET_KEY`, `DATABASE_URL`, `ALLOWED_ORIGINS`, etc.). Les valeurs de
+production se trouvent dans `/root/apps/trimaint-prod/.env` sur le VPS ; ne les
+recopie jamais dans un message ou dans le dépôt.
+
+### 2. Frontend — `trimaint-web`
+
+| Champ | Valeur |
+|---|---|
+| Name | `trimaint-web` |
+| Repository URL | `https://github.com/LePubli/le-projet.git` |
+| Branch | `master` |
+| Dockerfile Path | `Dockerfile` |
+| Build Context | `frontend` |
+| Container Port | `80` |
+| Domain | `triselec.le-publicitaire.fr` |
+| Persistent Volumes | aucun |
+| Auto-deploy on push | coché (une fois la bascule validée) |
+
+**Environment Variables** :
+
+```
+BACKEND_UPSTREAM=https://api-triselec.le-publicitaire.fr
+BACKEND_HOST_HEADER=api-triselec.le-publicitaire.fr
+```
+
+Le navigateur continue de parler à une seule adresse (`triselec…`) : le CORS,
+la politique CSP (`connect-src 'self'`) et les cookies restent inchangés.
+
+### Accès à la base
+
+Le backend (conteneur Git Deploy sur le réseau Docker par défaut) doit joindre
+`trimaint_db`, qui vit sur le réseau `trimaint_net`. Une solution simple et
+stable : publier le port de la base **uniquement** sur l'interface `docker0`
+de l'hôte, en ajoutant au service `postgres` du compose :
+
+```yaml
+    ports:
+      - "172.17.0.1:5433:5432"
+```
+
+`DATABASE_URL` devient alors
+`postgresql://UTILISATEUR:MOT_DE_PASSE@172.17.0.1:5433/trimaint`.
+Vérifier que `172.17.0.1` est bien l'adresse de `docker0`
+(`ip -4 addr show docker0`), et que le pare-feu laisse passer les conteneurs
+(`ufw allow from 172.16.0.0/12 to 172.17.0.1 port 5433 proto tcp`).
+La base reste invisible depuis Internet.
+
+### Fichiers téléversés existants
+
+Les photos et médias déjà présents sont dans le volume Docker
+`trimaint_uploads_data`. À copier dans le volume persistant du nouveau backend
+(arrêter l'ancien backend avant, pour ne rien perdre) :
+
+```bash
+SRC=trimaint_uploads_data
+DST=$(docker inspect dockpanel-git-trimaint-api --format '{{range .Mounts}}{{if eq .Destination "/data/uploads"}}{{.Source}}{{end}}{{end}}')
+echo "Destination : $DST"
+docker run --rm -v "$SRC":/src:ro -v "$DST":/dst alpine sh -c 'cp -a /src/. /dst/'
+```
 
 ---
 
-## Architecture déployée
+## Bascule depuis l'ancienne stack (docker-compose manuel)
 
-```
-Internet
-   │  https://triselec.le-publicitaire.fr
-   ▼
-nginx (hôte, DockPanel) ── TLS Let's Encrypt
-   │  proxy vers 127.0.0.1:7001
-   ▼
-┌─────────────── réseau trimaint_net ───────────────┐
-│                                                    │
-│  trimaint_frontend  (nginx:alpine, port 80)        │
-│    ├── sert le build React (SPA)                   │
-│    └── proxy /api/, /docs, /redoc ──┐              │
-│                                      ▼             │
-│  trimaint_backend   (FastAPI + gunicorn, :8000)    │
-│    │  non publié sur l'hôte                        │
-│    ▼                                               │
-│  trimaint_db        (postgres:16-alpine, :5432)    │
-│    │  non publié sur l'hôte                        │
-└────┴───────────────────────────────────────────────┘
+À faire en dehors des heures de travail : compter 10 minutes d'interruption.
 
-Volumes persistants :
-  trimaint_postgres_data   base de données
-  trimaint_uploads_data    fichiers uploadés (photos pannes, médias BT)
-  trimaint_backups_data    sauvegardes automatiques quotidiennes (2h)
-```
-
-Un seul point d'entrée public. Backend et base ne sont joignables que depuis
-le réseau interne Docker.
+1. **Sans impact, ancienne stack toujours active.**
+   - Créer l'enregistrement DNS `api-triselec…`.
+   - Sauvegarder la base (`docker exec trimaint_db pg_dump -U trimaint -d trimaint | gzip > /root/trimaint-avant-bascule.sql.gz`).
+   - Publier le port de la base sur `docker0` (voir « Accès à la base »), ce qui recrée seulement `trimaint_db`, volume intact.
+   - Déployer `trimaint-api` et vérifier `https://api-triselec…/api/health`.
+2. **Fenêtre de bascule.**
+   - Arrêter l'ancien frontend et l'ancien backend : `docker stop trimaint_frontend trimaint_backend`.
+   - Copier les fichiers téléversés (voir « Fichiers téléversés existants »).
+   - Dans DockPanel, **Sites → triselec.le-publicitaire.fr → Delete** : le Git Deploy `trimaint-web` crée lui-même le vhost de ce domaine (un Site « Reverse Proxy » du même nom entrerait en conflit).
+   - Déployer `trimaint-web`, puis exécuter les vérifications ci-dessous.
+3. **Après une semaine sans incident.**
+   - Supprimer l'ancienne stack (`docker compose down` dans `/root/apps/trimaint-prod`), les images `trimaint-*:prod`, `trimaint-*:latest` et `dockpanel-git-trimaint-backend/frontend`, puis le volume `trimaint_uploads_data` une fois sa copie contrôlée.
+   - Changer le mot de passe PostgreSQL (`ALTER USER trimaint WITH PASSWORD '…';`) et le reporter dans `DATABASE_URL`.
 
 ---
 
 ## Vérifications
 
 ```bash
-cd /root/apps/trimaint-prod
-
-docker compose ps                      # 3 conteneurs, postgres healthy
-curl -sI http://127.0.0.1:7001         # doit répondre 200
-docker compose logs backend --tail 30  # pas de boucle de redémarrage
-
-# Contenu de la base
-docker exec trimaint_db psql -U trimaint -d trimaint -c "\dt"
-docker exec trimaint_db psql -U trimaint -d trimaint -c "SELECT count(*) FROM machines;"
-docker exec trimaint_db psql -U trimaint -d trimaint -c "SELECT version_num FROM alembic_version;"
+curl -s https://api-triselec.le-publicitaire.fr/api/health
+curl -sI https://triselec.le-publicitaire.fr | head -1
+docker logs --tail 30 dockpanel-git-trimaint-api        # « Migrations terminées. » puis gunicorn
+docker exec trimaint_db psql -U trimaint -d trimaint -c "SELECT version_num FROM alembic_version;"   # 0021
 ```
 
-Dans les logs backend, tu dois voir :
-```
-Colonne rotation déjà présente.
-Exécution des migrations Alembic...
-Migrations terminées.
-Démarrage du serveur (gunicorn, 2 workers)...
-```
-
-### Connexion à l'application
-
-Les comptes utilisateurs viennent de la base restaurée — **utilise tes
-identifiants habituels de l'ancien serveur**. `BOOTSTRAP_ADMIN` est
-volontairement à `0` pour ne pas créer de compte parasite.
-
-Si tu as perdu l'accès, réinitialise le mot de passe directement en base
-plutôt que d'activer le bootstrap :
-```bash
-docker exec -it trimaint_db psql -U trimaint -d trimaint -c "SELECT id, email, role FROM users;"
-```
+Se connecter à l'application avec un compte existant, ouvrir une panne avec
+photo : la photo doit s'afficher (le chemin `/api/uploads/…` est servi par le
+backend, via le frontend).
 
 ---
 
-## Mise à jour après un push GitHub
+## Mise à jour
 
-Ce déploiement n'a pas de webhook automatique (le stack est multi-services,
-Git Deploy ne convient pas). La mise à jour se fait en trois commandes :
+Un `git push` sur `master` suffit si **Auto-deploy on push** est coché (webhook
+GitHub). Sinon : **Git Deploy → Deploy** sur le service concerné.
 
-```bash
-cd /root/apps/TriMaint-main && git pull
-docker build -t trimaint-backend:prod ./backend
-docker build -t trimaint-frontend:prod ./frontend
-cd /root/apps/trimaint-prod && docker compose up -d
-```
+Les migrations Alembic s'exécutent au démarrage du backend. Une migration
+appliquée n'est jamais modifiée : on corrige en avant.
 
-Ou dans DockPanel : **Redeploy** sur la stack, après avoir rebuild les images
-en SSH.
+## Retour en arrière
 
-> Le repo GitHub `LePubli/TriMaint` est actuellement **en retard** sur le zip
-> fourni : sa branche `main` s'arrête aux migrations 0012, alors que ce code
-> et la base sont en 0018. Pense à y pousser cette version avant de te reposer
-> sur `git pull`.
+Tant que l'ancienne stack (`/root/apps/trimaint-prod`) n'est pas supprimée :
+
+1. arrêter ou supprimer les deux Git Deploy `trimaint-web` et `trimaint-api` ;
+2. `cd /root/apps/trimaint-prod && docker compose up -d` ;
+3. le domaine `triselec.le-publicitaire.fr` repointe sur `127.0.0.1:7001`.
+
+Les volumes (`trimaint_postgres_data`, `trimaint_uploads_data`) ne sont jamais
+touchés par la bascule.
 
 ---
 
@@ -222,13 +196,14 @@ en SSH.
 `trimaint_backups_data`, avec 30 jours de rétention.
 
 ```bash
-docker exec trimaint_backend ls -lh /data/backups/
+docker exec dockpanel-git-trimaint-api ls -lh /data/backups/
 ```
 
-⚠️ Ces sauvegardes vivent **sur le même serveur** que la base. Configure aussi
-une destination externe dans **DockPanel → Backups** (S3, Backblaze B2, SFTP) —
-une sauvegarde locale ne protège ni d'une perte de serveur ni d'une
-compromission.
+⚠️ Ces sauvegardes vivent **sur le même serveur** que la base. Une copie
+chiffrée hors du VPS est faite chaque nuit par le script de sauvegarde du
+serveur (dump de la base, et fichiers téléversés une fois le volume
+`/data/uploads` repéré). Une sauvegarde locale seule ne protège ni d'une perte
+de serveur ni d'une compromission.
 
 ---
 
@@ -237,6 +212,10 @@ compromission.
 Le volume d'uploads est un emplacement sensible : c'est là qu'un fichier
 malveillant serait déposé en cas de faille d'upload. Une fois TriMaint stable,
 remets-le sous surveillance FIM.
+
+Après la bascule en Git Deploy, le volume d'uploads est géré par DockPanel : remplacer
+`trimaint_uploads_data` ci-dessous par le chemin ou le volume réel (voir
+`docker inspect dockpanel-git-trimaint-api`).
 
 Dans `/root/vps-security-stack/docker-compose.yml`, ajouter aux services
 `clamav` **et** `sec-agent` (au même chemin dans les deux) :
@@ -310,15 +289,14 @@ repasse proprement ; et le scénario prod (colonne `rotation` déjà présente
 avant migration, ex. base restaurée depuis un dump) confirmé idempotent —
 aucune tentative de recréer la colonne.
 
-### 2. Les migrations SQL manuelles à la racine
+### 2. Les migrations SQL manuelles
 
-✅ Fait. `migration_v23.sql` à `migration_v28_*.sql` étaient des doublons
-octet pour octet des fichiers déjà présents dans `migrations/` (à l'exception
-de `migration_v23.sql`, qui créait `machines.couleur`/`machines.taille_pastille`
-— rendu inutile par le correctif de la migration 0011 ci-dessus). Supprimés
-de la racine.
+✅ Fait. Les fichiers `migration_v23.sql` à `migration_v28_*.sql` doublonnaient
+les migrations Alembic `0011` à `0015` ; le dossier `migrations/` a été supprimé
+du dépôt (l'historique Git les conserve). Alembic est la seule source de vérité
+du schéma.
 
-### 3. `.env` versionné dans le repo public — déjà résolu
+### 3. `.env` versionné dans le repo public — résolu
 
 Vérifié le 2026-09-12 : `.env` n'existe plus dans le repo (ni tracké, ni
 présent sur disque), et `.gitignore` contient déjà la règle `.env`. Aucun
@@ -390,29 +368,36 @@ Vérifié : 8 tentatives consécutives → 5× 200 puis 429 sans `TEST_MODE` ;
 
 ---
 
+Un modèle sans secret, `.env.example`, est maintenant versionné à la racine.
+
 ## Dépannage
+
+**Le frontend ne démarre pas : `host not found in upstream`**
+Le nom de `BACKEND_UPSTREAM` ne se résout pas depuis le conteneur. Vérifier
+l'orthographe du domaine et l'enregistrement DNS (`dig +short api-triselec.le-publicitaire.fr`).
+Le conteneur redémarre automatiquement et repart dès que le DNS répond.
+
+**Erreur 404 ou mauvais site derrière `/api`**
+`BACKEND_HOST_HEADER` doit être exactement le domaine du backend : c'est lui
+qui fait choisir le bon vhost à nginx.
+
+**Erreur 413 à l'envoi d'une photo ou d'une vidéo**
+La limite d'envoi du vhost nginx du backend est trop basse (le backend accepte
+60 Mo). Vérifier `client_max_body_size` dans le vhost `api-triselec…` de
+`/etc/nginx/sites-enabled/`.
 
 **Le backend redémarre en boucle**
 ```bash
-docker compose logs backend --tail 50
+docker logs --tail 50 dockpanel-git-trimaint-api
 ```
-Si `relation "machines" does not exist` : la restauration du dump a échoué.
-Consulter `/tmp/restore-trimaint.log` et relancer `prepare-trimaint.sh`.
+`DATABASE_URL non défini` ou `PostgreSQL non disponible` : vérifier la variable
+et l'accès à la base (`docker exec dockpanel-git-trimaint-api python -c "import psycopg2,os; psycopg2.connect(os.environ['DATABASE_URL']); print('ok')"`).
 
-**`host not found in upstream "backend"`**
-Le frontend et le backend ne sont pas sur le même réseau. Vérifier que les
-trois services sont bien dans `trimaint_net` — ne jamais déployer ces services
-séparément (c'est ce qui avait cassé avec Git Deploy).
+**Les photos disparaissent après un déploiement**
+Le chemin `/data/uploads` n'est pas déclaré dans **Persistent Volumes**.
 
 **Le domaine renvoie 404**
 ```bash
-curl -sI http://127.0.0.1:7001     # le conteneur répond-il ?
 ls /etc/nginx/sites-enabled/       # le vhost existe-t-il, bien orthographié ?
 nginx -t && systemctl reload nginx
 ```
-
-**Conflit de nom de conteneur au déploiement**
-```bash
-docker rm -f trimaint_db trimaint_backend trimaint_frontend
-```
-puis redéployer depuis DockPanel.

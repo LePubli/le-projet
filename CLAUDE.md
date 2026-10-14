@@ -33,8 +33,10 @@ encadrement. Priorité actuelle : réduire complexité et duplication
   README « Dette technique ») ; le choix opérationnel de restaurer un dump
   n'a pas été changé pour autant — à réévaluer séparément si besoin. Migration
   Alembic appliquée = jamais modifiée, on corrige en avant.
-- `docker-compose.yml` = variante DockPanel (pas de `build:`, port local,
-  volumes nommés) ; écarts documentés en en-tête.
+- Production : un Git Deploy DockPanel par service (`backend/`, `frontend/`),
+  voir README. Le frontend lit `BACKEND_UPSTREAM` / `BACKEND_HOST_HEADER`
+  (`frontend/nginx.conf.template`). `docker-compose.yml` = pile complète avec
+  `build:` pour le développement local.
 
 **Conventions** : français partout — code, commentaires, commits, termes
 métier (`panne`, `bon_travail`, `chef_equipe`...).

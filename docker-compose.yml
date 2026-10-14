@@ -1,24 +1,17 @@
 # ==============================================================================
-# TriMaint — stack unique pour DockPanel
+# TriMaint — stack complète (référence et développement local)
 # ------------------------------------------------------------------------------
-# Différences avec le docker-compose.yml du repo (conçu pour Coolify/Traefik) :
+# La production tourne en Git Deploy DockPanel (un déploiement par service, voir
+# le README) ; ce fichier reste la façon la plus simple de lancer toute la pile
+# d'un coup, avec le build depuis les sources :
 #
-#   1. PAS de section "build:" — les images sont construites une fois en SSH
-#      par prepare-trimaint.sh, puis référencées par tag. DockPanel peut ainsi
-#      déployer ce YAML tel quel, sans avoir besoin d'accéder aux sources.
+#     cp .env.example .env     # puis remplir les secrets
+#     docker compose up -d --build
 #
-#   2. Le frontend publie son port sur 127.0.0.1:7001 au lieu de "expose".
-#      Coolify branchait Traefik sur le réseau Docker ; DockPanel utilise nginx
-#      sur l'hôte, qui a besoin d'un port réellement publié pour proxifier.
-#      L'écoute est limitée à 127.0.0.1 : rien n'est exposé publiquement,
-#      c'est le reverse proxy DockPanel qui gère l'accès et le TLS.
-#
-#   3. Le backend reste volontairement NON publié. Il n'est joignable que par
-#      le frontend via le réseau interne (proxy_pass http://backend:8000 dans
-#      frontend/nginx.conf). C'est le bon design : un seul point d'entrée.
-#
-#   4. Volumes nommés explicitement (name:) pour que leur nom ne dépende pas
-#      du nom de projet choisi par DockPanel, et reste stable entre redéploiements.
+#   - Le frontend publie son port sur 127.0.0.1:7001 (cible d'un reverse proxy).
+#   - Le backend n'est PAS publié : le frontend l'atteint par le réseau interne
+#     (BACKEND_UPSTREAM vaut http://backend:8000 par défaut dans son image).
+#   - Volumes nommés explicitement (name:) pour garder des noms stables.
 # ==============================================================================
 
 services:
@@ -48,6 +41,7 @@ services:
         max-file: "3"
 
   backend:
+    build: ./backend
     image: trimaint-backend:prod
     container_name: trimaint_backend
     restart: unless-stopped
@@ -90,6 +84,7 @@ services:
         max-file: "3"
 
   frontend:
+    build: ./frontend
     image: trimaint-frontend:prod
     container_name: trimaint_frontend
     restart: unless-stopped

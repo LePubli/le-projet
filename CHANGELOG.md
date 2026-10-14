@@ -3,6 +3,25 @@
 Tous les changements notables du projet RefMaint/TriMaint sont documentés ici.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [Non publié]
+
+### Modifié — déploiement Git Deploy DockPanel
+- `frontend/nginx.conf` devient `frontend/nginx.conf.template` : l'adresse du
+  backend et l'en-tête Host sont lus dans `BACKEND_UPSTREAM` et
+  `BACKEND_HOST_HEADER` au démarrage du conteneur (défaut : `http://backend:8000`,
+  comportement inchangé avec le docker-compose). Permet de déployer frontend et
+  backend séparément.
+- `docker-compose.yml` : ajout de `build:` pour le développement local.
+- `backend/entrypoint.sh` : suppression du bloc de réparation d'anciens
+  identifiants de révision Alembic (base de production en `0021`).
+
+### Ajouté
+- `.env.example` : modèle de configuration sans secret.
+
+### Supprimé
+- `migrations/` (SQL manuels doublonnant les migrations Alembic `0011` à `0015`).
+- `prepare-trimaint.sh` (préparation manuelle de l'ancien déploiement).
+
 ## [2.0.0] - 2026-07-27
 
 ### Ajouté — Tier 3 complet (#13 à #19)
