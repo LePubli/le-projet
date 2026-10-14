@@ -1,9 +1,0 @@
-Correctif TriMaint : docker-compose.yml deplace de la racine vers local/.
-Pourquoi : a la racine, DockPanel (Git Deploy) detecte le fichier et deploie
-une pile Compose (2e Postgres sur le volume de production) au lieu du Dockerfile.
-
-Dans votre copie du depot (dossier le-projet) :
-  1. copier le contenu de ce zip par-dessus (dossier local/ + Makefile, README.md,
-     CLAUDE.md, CHANGELOG.md)
-  2. git rm docker-compose.yml
-  3. git add -A && git commit -m "fix(deploy): docker-compose.yml dans local/" && git push
